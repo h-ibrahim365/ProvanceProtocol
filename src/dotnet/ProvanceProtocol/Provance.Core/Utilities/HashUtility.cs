@@ -55,8 +55,8 @@ namespace Provance.Core.Utilities
             // 3. Calculate the SHA-256 hash
             byte[] hashBytes = ComputeSha256(jsonString);
 
-            // 4. Convert hash bytes to hexadecimal string
-            return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+            // 4. Convert hash bytes to hexadecimal string (Optimized)
+            return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
 
         /// <summary>

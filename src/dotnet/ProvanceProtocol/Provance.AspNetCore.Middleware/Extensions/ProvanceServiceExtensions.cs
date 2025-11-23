@@ -23,7 +23,6 @@ namespace Provance.AspNetCore.Middleware.Extensions
 
             // --- 2. Register Core Services (from Provance.Core) ---
             services.AddSingleton<IEntryQueue, EntryQueue>();
-            services.AddSingleton<ILedgerStore, InMemoryLedgerStore>(); // Use real store in production
             services.AddSingleton<ILedgerService, LedgerService>();
 
             // --- 3. Register Hosted Services ---

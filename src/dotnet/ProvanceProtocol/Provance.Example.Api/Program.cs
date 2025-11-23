@@ -3,6 +3,7 @@ using Provance.AspNetCore.Middleware.Data;
 using Provance.AspNetCore.Middleware.Dtos;
 using Provance.Core.Services;
 using Provance.Core.Services.Interfaces;
+using Provance.Storage.MongoDB.Extensions;
 
 // Create the WebApplicationBuilder
 var builder = WebApplication.CreateBuilder(args);
@@ -11,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // --- PROVANCE CORE REGISTRATION ---
 // 1. Storage implementation (In-Memory for the example)
-builder.Services.AddSingleton<ILedgerStore, InMemoryLedgerStore>();
+builder.Services.AddProvanceMongoStorage(builder.Configuration);
 // 2. Queue implementation (for Zero-Blocking principle)
 builder.Services.AddSingleton<IEntryQueue, EntryQueue>();
 
