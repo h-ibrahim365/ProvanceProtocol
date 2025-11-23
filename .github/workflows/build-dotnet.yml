@@ -15,9 +15,9 @@ on:
 
 # Define project paths for clarity
 env:
-  CORE_PROJECT_PATH: Provance.Core/Provance.Core.csproj
-  MIDDLEWARE_PROJECT_PATH: Provance.AspNetCore.Middleware/Provance.AspNetCore.Middleware.csproj
-  SOLUTION_FILE: src/dotnet/ProvanceProtocol.sln
+  CORE_PROJECT_PATH: src/dotnet/ProvanceProtocol/Provance.Core/Provance.Core.csproj
+  MIDDLEWARE_PROJECT_PATH: src/dotnet/ProvanceProtocol/Provance.AspNetCore.Middleware/Provance.AspNetCore.Middleware.csproj
+  SOLUTION_FILE: src/dotnet/ProvanceProtocol/ProvanceProtocol.sln
 
 jobs:
   build_and_publish:
