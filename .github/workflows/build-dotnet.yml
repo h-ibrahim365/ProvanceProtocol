@@ -17,7 +17,7 @@ on:
 env:
   CORE_PROJECT_PATH: Provance.Core/Provance.Core.csproj
   MIDDLEWARE_PROJECT_PATH: Provance.AspNetCore.Middleware/Provance.AspNetCore.Middleware.csproj
-  SOLUTION_FILE: ProvanceProtocol.sln
+  SOLUTION_FILE: src/dotnet/ProvanceProtocol.sln
 
 jobs:
   build_and_publish:
