@@ -7,13 +7,12 @@ on:
       - "src/dotnet/**"
       - ".github/workflows/dotnet-ci.yml"
 
+env:
+  SOLUTION_FILE: src/dotnet/ProvanceProtocol/ProvanceProtocol.sln
+
 jobs:
   build_test:
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: src/dotnet/ProvanceProtocol/ProvanceProtocol.sln
 
     steps:
       - name: Checkout
@@ -22,21 +21,16 @@ jobs:
       - name: Setup .NET SDKs
         uses: actions/setup-dotnet@v4
         with:
+          # Multi-SDK to support multi-targeting (net8.0;net10.0)
           dotnet-version: |
             8.0.x
             10.0.x
 
-      - name: Show .NET info
-        run: dotnet --info
-
-      - name: Verify Docker (required by Testcontainers)
-        run: docker info
-
       - name: Restore
-        run: dotnet restore ProvanceProtocol.sln
+        run: dotnet restore "${{ env.SOLUTION_FILE }}"
 
       - name: Build
-        run: dotnet build ProvanceProtocol.sln -c Release --no-restore
+        run: dotnet build "${{ env.SOLUTION_FILE }}" -c Release --no-restore
 
       - name: Test
-        run: dotnet test ProvanceProtocol.sln -c Release --no-build --verbosity normal
+        run: dotnet test "${{ env.SOLUTION_FILE }}" -c Release --no-build --verbosity normal
