@@ -18,18 +18,15 @@ namespace Provance.Core.Services
     /// <param name="queue">The non-blocking queue to push sealed entries to.</param>
     public class LedgerService(IOptions<ProvanceOptions> options, ILedgerStore store, IEntryQueue queue) : ILedgerService
     {
-        private readonly ProvanceOptions _options = ValidateGenesisHash(options.Value);
+        private readonly ProvanceOptions _options = ValidateProtocolOptions(options.Value);
         private readonly ILedgerStore _store = store;
         private readonly IEntryQueue _queue = queue;
 
-        /// <summary>
-        /// Creates a minimal LedgerEntry from structured event data, seals it, and enqueues it for writing.
-        /// This method acts as a convenience wrapper for external consumers (like API endpoints).
-        /// </summary>
-        /// <param name="eventType">The type of event being audited (e.g., "USER_LOGIN").</param>
-        /// <param name="payload">The AuditedPayload instance containing the audit details.</param>
-        /// <returns>The asynchronous task returning the sealed LedgerEntry.</returns>
-        public Task<LedgerEntry> AddEntryAsync(string eventType, AuditedPayload payload)
+        /// <inheritdoc />
+        public Task<LedgerEntry> AddEntryAsync(
+            string eventType,
+            AuditedPayload payload,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(eventType))
             {
@@ -40,6 +37,8 @@ namespace Provance.Core.Services
                 throw new ArgumentNullException(nameof(payload), "AuditedPayload cannot be null.");
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             var rawEntry = new LedgerEntry
             {
                 Timestamp = DateTimeOffset.UtcNow,
@@ -48,55 +47,46 @@ namespace Provance.Core.Services
                 Payload = payload,
             };
 
-            return SealEntryAsync(rawEntry);
+            return SealEntryAsync(rawEntry, cancellationToken);
         }
 
-        /// <summary>
-        /// Seals a new audit entry: retrieves the last hash, calculates the current hash, 
-        /// and enqueues the entry for background writing. This method is non-blocking.
-        /// </summary>
-        /// <param name="entry">The raw ledger entry data.</param>
-        /// <returns>The sealed LedgerEntry with CurrentHash calculated.</returns>
-        public async Task<LedgerEntry> SealEntryAsync(LedgerEntry entry)
+        /// <inheritdoc />
+        public async Task<LedgerEntry> SealEntryAsync(LedgerEntry entry, CancellationToken cancellationToken = default)
         {
-            // 1. Get the Previous Hash (Chain Link)
-            LedgerEntry? lastEntry = await _store.GetLastEntryAsync();
+            cancellationToken.ThrowIfCancellationRequested();
 
-            // Set PreviousHash: use the last entry's hash, or the Genesis Hash if the ledger is empty.
-            // We use the null-coalescing operator here to handle the case where lastEntry is null (first entry).
+            // 1. Get the Previous Hash (Chain Link)
+            LedgerEntry? lastEntry = await _store.GetLastEntryAsync(cancellationToken);
+
+            // Set PreviousHash: use last entry's hash, or GenesisHash if ledger is empty.
             entry.PreviousHash = lastEntry?.CurrentHash ?? _options.GenesisHash;
 
-            // 2. Calculate the Current Hash (Seal the Entry)
-            entry.CurrentHash = HashUtility.CalculateHash(entry);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            // 3. Enqueue the sealed entry for background writing (Zero-Blocking principle)
-            await _queue.EnqueueEntryAsync(entry);
+            // 2. Calculate CurrentHash (HMAC)
+            entry.CurrentHash = HashUtility.CalculateHash(entry, _options.SecretKey);
+
+            // 3. Enqueue for background persistence (may await due to backpressure)
+            await _queue.EnqueueEntryAsync(entry, cancellationToken);
 
             return entry;
         }
 
-        /// <summary>
-        /// Retrieves the very last entry written to the ledger by delegating to the store.
-        /// </summary>
-        /// <returns>A task that returns the last LedgerEntry, or null if the ledger is empty.</returns>
-        public Task<LedgerEntry?> GetLastEntryAsync()
+        /// <inheritdoc />
+        public Task<LedgerEntry?> GetLastEntryAsync(CancellationToken cancellationToken = default)
         {
-            return _store.GetLastEntryAsync();
+            return _store.GetLastEntryAsync(cancellationToken);
         }
 
-        /// <summary>
-        /// Verifies the complete cryptographic integrity of the ledger, from the newest hash 
-        /// back to the Genesis Hash.
-        /// </summary>
-        /// <returns>A tuple containing a boolean indicating validity and a string containing 
-        /// the reason for failure if invalid, or a success message if valid.</returns>
-        public async Task<(bool IsValid, string Reason)> VerifyChainIntegrityAsync()
+        /// <inheritdoc />
+        public async Task<(bool IsValid, string Reason)> VerifyChainIntegrityAsync(CancellationToken cancellationToken = default)
         {
-            // Retrieve all entries from the store.
-            IEnumerable<LedgerEntry> rawEntries = await _store.GetAllEntriesAsync();
+            IEnumerable<LedgerEntry> rawEntries = await _store.GetAllEntriesAsync(cancellationToken);
 
-            // --- CRITICAL CHECK: Ensure chronological order for verification ---
-            var allEntries = rawEntries.OrderBy(e => e.Timestamp).ThenBy(e => e.Id).ToList();
+            var allEntries = rawEntries
+                .OrderBy(e => e.Timestamp)
+                .ThenBy(e => e.Id)
+                .ToList();
 
             if (allEntries.Count == 0)
             {
@@ -105,47 +95,53 @@ namespace Provance.Core.Services
 
             string expectedPreviousHash = _options.GenesisHash;
 
-            foreach (var entry in allEntries)
+            for (int i = 0; i < allEntries.Count; i++)
             {
-                // Check 1: Chain Link Integrity (Checks if the pointer is correct)
+                if ((i & 1023) == 0) cancellationToken.ThrowIfCancellationRequested();
+
+                var entry = allEntries[i];
+
                 if (entry.PreviousHash != expectedPreviousHash)
                 {
-                    string reason = $"Chain link broken at entry ID {entry.Id}. " +
-                                    $"Expected PreviousHash: {expectedPreviousHash}, but found: {entry.PreviousHash}. " +
-                                    $"The ledger has been tampered with or corrupted.";
-                    // Returns status and reason upon failure
-                    return (false, reason);
+                    return (false,
+                        $"Chain link broken at entry ID {entry.Id}. Expected PreviousHash: {expectedPreviousHash}, but found: {entry.PreviousHash}.");
                 }
 
-                // Check 2: Data Integrity (Checks if the data itself has been modified)
-                string calculatedHash = HashUtility.CalculateHash(entry);
+                string calculatedHash = HashUtility.CalculateHash(entry, _options.SecretKey);
+
                 if (calculatedHash != entry.CurrentHash)
                 {
-                    string reason = $"Data tampering detected in entry ID {entry.Id}. " +
-                                    $"Calculated hash: {calculatedHash} does not match stored hash: {entry.CurrentHash}. " +
-                                    $"The entry's payload has been modified.";
-                    // Returns status and reason upon failure
-                    return (false, reason);
+                    return (false,
+                        $"Data tampering detected in entry ID {entry.Id}. Calculated hash: {calculatedHash} does not match stored hash: {entry.CurrentHash}.");
                 }
 
-                // Update the expected hash for the next iteration
                 expectedPreviousHash = calculatedHash;
             }
 
-            // Returns success status and a message
-            return (true, "Chain integrity successfully verified. All entries are valid.");
+            return (true, "Chain integrity successfully verified. All entries are valid and authentically signed.");
         }
 
-        private static ProvanceOptions ValidateGenesisHash(ProvanceOptions options)
+        private static ProvanceOptions ValidateProtocolOptions(ProvanceOptions options)
         {
             if (string.IsNullOrWhiteSpace(options.GenesisHash))
             {
-                throw new InvalidOperationException("PROVANCE Protocol requires a non-null and non-empty GenesisHash to be configured in ProvanceOptions.");
+                throw new InvalidOperationException("PROVANCE Protocol requires a GenesisHash.");
             }
             if (options.GenesisHash.Length != 64 || !HashUtility.IsValidHexString(options.GenesisHash))
             {
-                throw new InvalidOperationException("GenesisHash must be a valid 64-character SHA-256 hash string.");
+                throw new InvalidOperationException("GenesisHash must be a valid 64-character hex hash string.");
             }
+
+            if (string.IsNullOrWhiteSpace(options.SecretKey))
+            {
+                throw new InvalidOperationException("PROVANCE Protocol requires a SecretKey for HMAC signing.");
+            }
+
+            if (options.SecretKey == "DEFAULT_INSECURE_KEY_CHANGE_ME")
+            {
+                // TODO: throw exception when PROD env
+            }
+
             return options;
         }
     }

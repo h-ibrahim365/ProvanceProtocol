@@ -6,21 +6,23 @@
 		<Nullable>enable</Nullable>
 
 		<IsPackable>true</IsPackable>
-		<PackageId>Provance.AspNetCore.Middleware</PackageId>
+		<PackageId>Provance.Storage.MongoDB</PackageId>
 		<Version>0.0.2</Version>
 		<Authors>H. Id Brahim</Authors>
-		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<Description>MongoDB storage provider for the PROVANCE protocol (ILedgerStore implementation).</Description>
+		<PackageTags>audit;ledger;tamper-evident;mongodb;hmac;security</PackageTags>
+
 		<RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
-		<PackageTags>blockchain;aspnetcore;middleware;ledger;audit</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 
-		<AssemblyName>Provance.AspNetCore.Middleware</AssemblyName>
-		<RootNamespace>Provance.AspNetCore.Middleware</RootNamespace>
-		<Description>Middleware and extensions for integrating the Provance Ledger Core into ASP.NET Core applications.</Description>
+		<AssemblyName>Provance.Storage.MongoDB</AssemblyName>
+		<RootNamespace>Provance.Storage.MongoDB</RootNamespace>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+		<PackageReference Include="MongoDB.Driver" Version="2.23.1" />
 	</ItemGroup>
 
 	<ItemGroup>

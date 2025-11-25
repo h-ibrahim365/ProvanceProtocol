@@ -17,6 +17,7 @@ on:
 env:
   CORE_PROJECT_PATH: src/dotnet/ProvanceProtocol/Provance.Core/Provance.Core.csproj
   MIDDLEWARE_PROJECT_PATH: src/dotnet/ProvanceProtocol/Provance.AspNetCore.Middleware/Provance.AspNetCore.Middleware.csproj
+  STORAGE_PROJECT_PATH: src/dotnet/ProvanceProtocol/Provance.Storage.MongoDB/Provance.Storage.MongoDB.csproj
   SOLUTION_FILE: src/dotnet/ProvanceProtocol/ProvanceProtocol.sln
 
 jobs:
@@ -65,7 +66,11 @@ jobs:
     - name: Pack Provance.AspNetCore.Middleware
       run: dotnet pack ${{ env.MIDDLEWARE_PROJECT_PATH }} --configuration Release --no-build --output nupkg -p:PackageVersion=${{ env.PACKAGE_VERSION }}
 
-    # 7. Push all created packages to NuGet.org
+    # 7. Create NuGet package for Provance.Storage.MongoDB 
+    - name: Pack Provance.Storage.MongoDB
+      run: dotnet pack ${{ env.STORAGE_PROJECT_PATH }} --configuration Release --no-build --output nupkg -p:PackageVersion=${{ env.PACKAGE_VERSION }}
+
+    # 8. Push all created packages to NuGet.org
     - name: Publish all packages to NuGet
       run: dotnet nuget push nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
       env:

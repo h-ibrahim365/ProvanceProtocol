@@ -4,26 +4,20 @@ using Provance.Core.Services.Interfaces;
 namespace Provance.Core.Services
 {
     /// <summary>
-    /// An in-memory, thread-safe implementation of ILedgerStore, primarily for unit testing
-    /// and demonstrating core functionality without a database dependency.
+    /// An in-memory, thread-safe implementation of <see cref="ILedgerStore"/>, primarily for tests
+    /// and demos without a database dependency.
     /// </summary>
     public class InMemoryLedgerStore : ILedgerStore
     {
-        // Thread-safe list to hold the ledger entries in memory.
-        // Entries are added sequentially, maintaining the chain order.
         private readonly List<LedgerEntry> _ledger = [];
-        // Semaphore to ensure only one writer or reader is accessing the list at a time.
         private readonly SemaphoreSlim _lock = new(1, 1);
 
-        /// <summary>
-        /// Retrieves the very last entry written to the ledger.
-        /// </summary>
-        public async Task<LedgerEntry?> GetLastEntryAsync()
+        /// <inheritdoc />
+        public async Task<LedgerEntry?> GetLastEntryAsync(CancellationToken cancellationToken = default)
         {
-            await _lock.WaitAsync();
+            await _lock.WaitAsync(cancellationToken);
             try
             {
-                // Returns the last element. If empty, returns null.
                 return _ledger.LastOrDefault();
             }
             finally
@@ -32,19 +26,18 @@ namespace Provance.Core.Services
             }
         }
 
-        /// <summary>
-        /// Writes a sealed ledger entry to the permanent store (in-memory list).
-        /// </summary>
-        /// <param name="entry">The sealed entry to save.</param>
-        public async Task WriteEntryAsync(LedgerEntry entry)
+        /// <inheritdoc />
+        public async Task WriteEntryAsync(LedgerEntry entry, CancellationToken cancellationToken = default)
         {
-            await _lock.WaitAsync();
+            ArgumentNullException.ThrowIfNull(entry);
+
+            await _lock.WaitAsync(cancellationToken);
             try
             {
-                // In a real application, this would be the database write operation.
                 _ledger.Add(entry);
-                // Simulate an I/O operation delay
-                await Task.Delay(5);
+
+                // Simulate I/O (cancellable)
+                await Task.Delay(5, cancellationToken);
             }
             finally
             {
@@ -52,14 +45,10 @@ namespace Provance.Core.Services
             }
         }
 
-        /// <summary>
-        /// Retrieves an entry by its ID. Used primarily for chain verification.
-        /// </summary>
-        /// <param name="entryId">The ID of the entry to retrieve.</param>
-        /// <returns>A task that returns the LedgerEntry, or null if not found.</returns>
-        public async Task<LedgerEntry?> GetEntryByIdAsync(Guid entryId)
+        /// <inheritdoc />
+        public async Task<LedgerEntry?> GetEntryByIdAsync(Guid entryId, CancellationToken cancellationToken = default)
         {
-            await _lock.WaitAsync();
+            await _lock.WaitAsync(cancellationToken);
             try
             {
                 return _ledger.FirstOrDefault(e => e.Id == entryId);
@@ -70,18 +59,12 @@ namespace Provance.Core.Services
             }
         }
 
-        /// <summary>
-        /// Retrieves all entries from the ledger in sequential chain order.
-        /// This is crucial for full chain integrity verification in the LedgerService.
-        /// </summary>
-        /// <returns>An ordered collection of all LedgerEntry objects.</returns>
-        public async Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync()
+        /// <inheritdoc />
+        public async Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
         {
-            await _lock.WaitAsync();
+            await _lock.WaitAsync(cancellationToken);
             try
             {
-                // Return a copy of the list to ensure the original list cannot be modified
-                // while iterating outside the lock.
                 return [.. _ledger];
             }
             finally

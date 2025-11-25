@@ -15,6 +15,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\Provance.AspNetCore.Middleware\Provance.AspNetCore.Middleware.csproj" />
+	  <ProjectReference Include="..\Provance.Storage.MongoDB\Provance.Storage.MongoDB.csproj" />
 	</ItemGroup>
 
 </Project>
