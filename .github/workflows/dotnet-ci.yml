@@ -7,13 +7,12 @@ on:
       - "src/dotnet/**"
       - ".github/workflows/dotnet-ci.yml"
 
+env:
+  SOLUTION_FILE: src/dotnet/ProvanceProtocol/ProvanceProtocol.sln
+
 jobs:
   build_test:
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: src/dotnet
 
     steps:
       - name: Checkout
@@ -22,15 +21,18 @@ jobs:
       - name: Setup .NET SDKs
         uses: actions/setup-dotnet@v4
         with:
+          # Multi-SDK to support multi-targeting (net8.0;net10.0)
           dotnet-version: |
             8.0.x
             10.0.x
+          # net10 can be preview depending on runner image; safe to enable
+          include-prerelease: true
 
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore "${{ env.SOLUTION_FILE }}"
 
       - name: Build
-        run: dotnet build -c Release --no-restore
+        run: dotnet build "${{ env.SOLUTION_FILE }}" -c Release --no-restore
 
       - name: Test
-        run: dotnet test -c Release --no-build --verbosity normal
+        run: dotnet test "${{ env.SOLUTION_FILE }}" -c Release --no-build --verbosity normal
