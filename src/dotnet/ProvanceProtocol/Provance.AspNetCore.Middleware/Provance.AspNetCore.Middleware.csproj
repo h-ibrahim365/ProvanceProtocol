@@ -7,7 +7,7 @@
 
 		<IsPackable>true</IsPackable>
 		<PackageId>Provance.AspNetCore.Middleware</PackageId>
-		<Version>0.0.1</Version>
+		<Version>0.0.2</Version>
 		<Authors>H. Id Brahim</Authors>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>

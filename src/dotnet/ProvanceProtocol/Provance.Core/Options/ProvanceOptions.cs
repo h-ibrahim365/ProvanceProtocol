@@ -16,5 +16,10 @@
         /// The security level for hashing.
         /// </summary>
         public string HashAlgorithm { get; set; } = "SHA256";
+
+        /// <summary>
+        /// Secret key used for HMAC signing. MUST remain private.
+        /// </summary>
+        public string SecretKey { get; set; } = "DEFAULT_INSECURE_KEY_CHANGE_ME";
     }
 }

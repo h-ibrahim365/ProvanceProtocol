@@ -30,12 +30,13 @@ namespace Provance.Core.Utilities
         };
 
         /// <summary>
-        /// Calculates the SHA-256 hash of a LedgerEntry. 
-        /// The hash is calculated on a canonical JSON representation of the entry.
+        /// Calculates the HMAC-SHA256 signature of a LedgerEntry using a secret key.
+        /// The signature is calculated on a canonical JSON representation of the entry.
         /// </summary>
-        /// <param name="entry">The ledger entry to hash.</param>
-        /// <returns>The SHA-256 hash string in hexadecimal format.</returns>
-        public static string CalculateHash(LedgerEntry entry)
+        /// <param name="entry">The ledger entry to sign.</param>
+        /// <param name="secretKey">The secret key used for HMAC signing.</param>
+        /// <returns>The HMAC-SHA256 signature string in hexadecimal format.</returns>
+        public static string CalculateHash(LedgerEntry entry, string secretKey)
         {
             // 1. Create a temporary object that does NOT include CurrentHash
             // to ensure it is omitted from the calculated hash.
@@ -52,22 +53,23 @@ namespace Provance.Core.Utilities
             // 2. Serialize the object into deterministic JSON
             string jsonString = JsonSerializer.Serialize(entryToHash, CanonicalOptions);
 
-            // 3. Calculate the SHA-256 hash
-            byte[] hashBytes = ComputeSha256(jsonString);
+            // 3. Calculate the HMAC-SHA256 signature
+            byte[] hashBytes = ComputeHmacSha256(jsonString, secretKey);
 
             // 4. Convert hash bytes to hexadecimal string (Optimized)
             return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
 
         /// <summary>
-        /// Calculates the SHA-256 hash from a data string.
+        /// Calculates the HMAC-SHA256 hash from a data string using a secret key.
         /// </summary>
-        /// <param name="data">The data string to hash.</param>
-        /// <returns>The hash as a byte array.</returns>
-        private static byte[] ComputeSha256(string data)
+        private static byte[] ComputeHmacSha256(string data, string key)
         {
-            byte[] inputBytes = Encoding.UTF8.GetBytes(data);
-            return SHA256.HashData(inputBytes);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+            byte[] dataBytes = Encoding.UTF8.GetBytes(data);
+
+            using var hmac = new HMACSHA256(keyBytes);
+            return hmac.ComputeHash(dataBytes);
         }
 
         /// <summary>

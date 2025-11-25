@@ -4,6 +4,21 @@
 		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+
+		<IsPackable>true</IsPackable>
+		<PackageId>Provance.Storage.MongoDB</PackageId>
+		<Version>0.0.2</Version>
+		<Authors>H. Id Brahim</Authors>
+		<Description>MongoDB storage provider for the PROVANCE protocol (ILedgerStore implementation).</Description>
+		<PackageTags>audit;ledger;tamper-evident;mongodb;hmac;security</PackageTags>
+
+		<RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+		<AssemblyName>Provance.Storage.MongoDB</AssemblyName>
+		<RootNamespace>Provance.Storage.MongoDB</RootNamespace>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -11,7 +26,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\Provance.Core\Provance.Core.csproj" />
+		<ProjectReference Include="..\Provance.Core\Provance.Core.csproj" />
 	</ItemGroup>
 
 </Project>

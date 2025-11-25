@@ -5,49 +5,67 @@ using Provance.Core.Services.Interfaces;
 
 namespace Provance.Storage.MongoDB
 {
+    /// <inheritdoc cref="ILedgerStore" />
     public class MongoLedgerStore : ILedgerStore
     {
         private readonly IMongoCollection<LedgerEntry> _collection;
 
+        /// <inheritdoc cref="ILedgerStore" />
         public MongoLedgerStore(IOptions<MongoDbOptions> options)
         {
             var mongoClient = new MongoClient(options.Value.ConnectionString);
             var mongoDatabase = mongoClient.GetDatabase(options.Value.DatabaseName);
             _collection = mongoDatabase.GetCollection<LedgerEntry>(options.Value.CollectionName);
 
-            // OPTIMIZATION: Index creation
-            // Create a descending index on Timestamp to make GetLastEntryAsync ultra-fast.
-            var indexKeysDefinition = Builders<LedgerEntry>.IndexKeys.Descending(x => x.Timestamp);
-            var indexModel = new CreateIndexModel<LedgerEntry>(indexKeysDefinition);
-            _collection.Indexes.CreateOne(indexModel);
+            // OPTIMIZATION: Indexes
+            var lastIndex = new CreateIndexModel<LedgerEntry>(
+                Builders<LedgerEntry>.IndexKeys
+                    .Descending(x => x.Timestamp)
+                    .Descending(x => x.Id));
+
+            var idIndex = new CreateIndexModel<LedgerEntry>(
+                Builders<LedgerEntry>.IndexKeys.Ascending(x => x.Id));
+
+            _collection.Indexes.CreateMany([lastIndex, idIndex]);
         }
 
-        public async Task WriteEntryAsync(LedgerEntry entry)
+        /// <inheritdoc />
+        public Task WriteEntryAsync(LedgerEntry entry, CancellationToken cancellationToken = default)
         {
-            // MongoDB handles C# Guids automatically if configured, 
-            // or BSON mapping can be forced globally at startup.
-            await _collection.InsertOneAsync(entry);
+            ArgumentNullException.ThrowIfNull(entry);
+            return _collection.InsertOneAsync(entry, cancellationToken: cancellationToken);
         }
 
-        public async Task<LedgerEntry?> GetLastEntryAsync()
+        /// <inheritdoc />
+        public async Task<LedgerEntry?> GetLastEntryAsync(CancellationToken cancellationToken = default)
         {
-            // Sort by descending Timestamp and take the first one.
-            return await _collection.Find(Builders<LedgerEntry>.Filter.Empty)
+            LedgerEntry? last = await _collection
+                .Find(Builders<LedgerEntry>.Filter.Empty)
                 .SortByDescending(e => e.Timestamp)
-                .FirstOrDefaultAsync();
+                .ThenByDescending(e => e.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return last;
         }
 
-        public async Task<LedgerEntry?> GetEntryByIdAsync(Guid entryId)
+        /// <inheritdoc />
+        public async Task<LedgerEntry?> GetEntryByIdAsync(Guid entryId, CancellationToken cancellationToken = default)
         {
-            return await _collection.Find(e => e.Id == entryId).FirstOrDefaultAsync();
+            LedgerEntry? entry = await _collection
+                .Find(e => e.Id == entryId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return entry;
         }
 
-        public async Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync()
+        /// <inheritdoc />
+        public async Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
         {
-            // Strict chronological order is required for chain verification.
-            return await _collection.Find(Builders<LedgerEntry>.Filter.Empty)
+            return await _collection
+                .Find(Builders<LedgerEntry>.Filter.Empty)
                 .SortBy(e => e.Timestamp)
-                .ToListAsync();
+                .ThenBy(e => e.Id)
+                .ToListAsync(cancellationToken);
         }
     }
 }

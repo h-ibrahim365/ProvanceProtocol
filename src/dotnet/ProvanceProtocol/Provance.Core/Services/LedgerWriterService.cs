@@ -68,11 +68,15 @@ namespace Provance.Core.Services
         }
 
         /// <summary>
-        /// The main execution loop of the background service.
-        /// It continuously consumes entries from the queue until the writer completes or the token is cancelled.
+        /// The main background execution loop.
+        /// Continuously drains the queue and persists entries to the store.
+        /// Uses a retry policy for transient failures and respects <paramref name="stoppingToken"/>
+        /// for graceful shutdown.
         /// </summary>
-        /// <param name="stoppingToken">A token to signal the service shutdown.</param>
-        /// <returns>A <see cref="Task"/> that represents the long-running operation.</returns>
+        /// <param name="stoppingToken">
+        /// A token that signals the service to stop processing and exit gracefully.
+        /// </param>
+        /// <returns>A task that represents the lifetime of the background processing loop.</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("PROVANCE Ledger Writer Service started.");
@@ -81,14 +85,13 @@ namespace Provance.Core.Services
             {
                 while (await _queue.Reader.WaitToReadAsync(stoppingToken))
                 {
-                    if (_queue.Reader.TryRead(out var entryToSave))
+                    while (_queue.Reader.TryRead(out var entryToSave))
                     {
-                        await _retryPolicy.ExecuteAsync(async () =>
+                        await _retryPolicy.ExecuteAsync(async ct =>
                         {
-                            await _store.WriteEntryAsync(entryToSave);
-                        });
+                            await _store.WriteEntryAsync(entryToSave, ct);
+                        }, stoppingToken);
 
-                        // Optimization: Check LogLevel before allocating memory for the log message
                         if (_logger.IsEnabled(LogLevel.Debug))
                         {
                             _logger.LogDebug(
@@ -101,16 +104,14 @@ namespace Provance.Core.Services
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                // Graceful shutdown
+                // graceful shutdown
             }
             catch (Exception ex)
             {
-                // If retries are exhausted (e.g., DB is down for > 15s), the exception bubbles up here.
-                // We log it as a critical error. In a real scenario, you might want to implement a "Dead Letter Queue" here.
-                _logger.LogError(ex, "An unhandled critical error occurred in the ledger writer loop after retries.");
+                _logger.LogError(ex, "Critical error occurred in the writer loop after retries.");
             }
 
-            _logger.LogInformation("PROVANCE Ledger Writer Service stopped processing queue and exited ExecuteAsync.");
+            _logger.LogInformation("PROVANCE Ledger Writer Service stopped.");
         }
     }
 }

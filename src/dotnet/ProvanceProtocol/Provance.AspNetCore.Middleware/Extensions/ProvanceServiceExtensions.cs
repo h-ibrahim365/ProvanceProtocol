@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Provance.Core.Options;
 using Provance.Core.Services;
 using Provance.Core.Services.Interfaces;
@@ -28,6 +29,9 @@ namespace Provance.AspNetCore.Middleware.Extensions
             // --- 3. Register Hosted Services ---
             // LedgerWriterService is the IHostedService that consumes the queue and writes to the store.
             services.AddHostedService<LedgerWriterService>();
+
+            // --- 4. FALLBACK STORAGE ---
+            services.TryAddSingleton<ILedgerStore, InMemoryLedgerStore>();
 
             // NOTE: LedgerSealerService (Merkle Tree archival) would be added here later.
 

@@ -4,6 +4,7 @@ using Provance.Core.Data;
 using Provance.Core.Services;
 using Provance.Core.Services.Interfaces;
 using System.Threading.Channels;
+using Xunit;
 
 namespace Provance.Core.Tests.Integration
 {
@@ -26,38 +27,38 @@ namespace Provance.Core.Tests.Integration
                 PreviousHash = "MOCK_GENESIS"
             };
 
-            // 1. Create an unbounded channel to control the data flow.
             var channel = Channel.CreateUnbounded<LedgerEntry>();
-
-            // 2. Configure the mock to return the ChannelReader (which the service uses).
             mockQueue.SetupGet(q => q.Reader).Returns(channel.Reader);
 
-            // 3. Initialize the service
-            var stoppingTokenSource = new CancellationTokenSource();
+            var writeTcs = new TaskCompletionSource<LedgerEntry>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            mockStore
+                .Setup(s => s.WriteEntryAsync(It.IsAny<LedgerEntry>(), It.IsAny<CancellationToken>()))
+                .Callback<LedgerEntry, CancellationToken>((e, _) => writeTcs.TrySetResult(e))
+                .Returns(Task.CompletedTask);
+
             var service = new LedgerWriterService(mockQueue.Object, mockStore.Object, mockLogger.Object);
 
-            // Start the service (it immediately begins waiting on the channel)
-            var executeTask = service.StartAsync(stoppingTokenSource.Token);
+            await service.StartAsync(CancellationToken.None);
 
-            // 4. Write the entry into the channel.
-            await channel.Writer.WriteAsync(testEntry);
-
-            // 5. Complete the writer to signal that the stream is finished.
-            // This allows the 'while (await _queue.Reader.WaitToReadAsync)' loop to exit gracefully after processing the entry.
+            // Act
+            await channel.Writer.WriteAsync(testEntry, CancellationToken.None);
             channel.Writer.Complete();
 
-            // Wait for the service to complete its execution (consumed the entry and exited the loop).
-            // If the service does not stop, this will eventually timeout in the test runner.
-            await executeTask;
+            // Wait deterministically for the write
+            var completed = await Task.WhenAny(writeTcs.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+            Assert.Same(writeTcs.Task, completed);
+
+            // cleanup
+            await service.StopAsync(CancellationToken.None);
 
             // Assert
-            // Verifies that the consumed entry was transmitted to the store's WriteEntryAsync method
-            mockStore.Verify(s => s.WriteEntryAsync(
-                It.Is<LedgerEntry>(e => e.Id == testEntry.Id)),
-                Times.Once(),
-                "WriteEntryAsync should be called exactly once for the single dequeued entry.");
+            mockStore.Verify(
+                s => s.WriteEntryAsync(
+                    It.Is<LedgerEntry>(e => e.Id == testEntry.Id),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
 
-            // Verifies there were no other write attempts
             mockStore.VerifyNoOtherCalls();
         }
     }
