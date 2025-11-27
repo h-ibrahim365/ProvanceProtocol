@@ -1,4 +1,6 @@
 name: .NET CI (PR)
+permissions:
+  contents: read
 
 on:
   pull_request:
