@@ -1,4 +1,6 @@
 name: Publish Provance NuGet Packages
+permissions:
+  contents: read
 
 # Defines when the workflow should run
 on:
