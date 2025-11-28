@@ -4,6 +4,7 @@ using Provance.Core.Data;
 using Provance.Core.Options;
 using Provance.Core.Services;
 using Provance.Core.Services.Interfaces;
+using Provance.Core.Services.Internal;
 using Provance.Core.Utilities;
 
 namespace Provance.Core.Tests.CoreLogic
@@ -15,6 +16,8 @@ namespace Provance.Core.Tests.CoreLogic
 
         private readonly Mock<IOptions<ProvanceOptions>> _mockOptions;
         private readonly Mock<IEntryQueue> _mockQueue;
+        private readonly Mock<ILedgerStore> _mockStore;
+        private readonly LedgerService _service;
 
         public LedgerServiceTests()
         {
@@ -26,154 +29,137 @@ namespace Provance.Core.Tests.CoreLogic
             });
 
             _mockQueue = new Mock<IEntryQueue>();
-        }
+            _mockStore = new Mock<ILedgerStore>();
 
-        private static LedgerEntry CreateSealedEntry(string previousHash, string eventType, int index, string secretKey)
-        {
-            var entry = new LedgerEntry
-            {
-                Id = Guid.NewGuid(),
-                Timestamp = DateTimeOffset.UtcNow.AddSeconds(index),
-                EventType = eventType,
-                PreviousHash = previousHash,
-                Payload = new AuditedPayload { ActorId = $"Actor{index}", Description = $"Event {index}" },
-            };
-
-            entry.CurrentHash = HashUtility.CalculateHash(entry, secretKey);
-            return entry;
+            _service = new LedgerService(_mockOptions.Object, _mockStore.Object, _mockQueue.Object);
         }
 
         [Fact]
-        public async Task SealEntryAsync_FirstEntry_UsesGenesisHashAndEnqueues()
+        public async Task AddEntryAsync_ValidInput_EnqueuesAndWaitsForAck()
         {
-            // Arrange
-            var token = CancellationToken.None;
-
-            var mockStore = new Mock<ILedgerStore>();
-            mockStore
-                .Setup(s => s.GetLastEntryAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync((LedgerEntry?)null);
+            var eventType = "TEST_EVENT";
+            var payload = new AuditedPayload { Description = "Test" };
+            var expectedId = Guid.NewGuid();
 
             _mockQueue
-                .Setup(q => q.EnqueueEntryAsync(It.IsAny<LedgerEntry>(), It.IsAny<CancellationToken>()))
+                .Setup(q => q.EnqueueAsync(It.IsAny<LedgerTransactionContext>(), It.IsAny<CancellationToken>()))
+                .Callback<LedgerTransactionContext, CancellationToken>((context, ct) =>
+                {
+                    Assert.Equal(eventType, context.EventType);
+                    Assert.Equal(payload, context.Payload);
+
+                    var completedEntry = new LedgerEntry
+                    {
+                        Id = expectedId,
+                        Timestamp = DateTimeOffset.UtcNow,
+                        Sequence = 1,
+                        CurrentHash = "HASH_123",
+                        PreviousHash = GENESIS_HASH,
+                        EventType = eventType,
+                        Payload = payload
+                    };
+
+                    context.AckSource.SetResult(completedEntry);
+                })
                 .Returns(ValueTask.CompletedTask);
 
-            var service = new LedgerService(_mockOptions.Object, mockStore.Object, _mockQueue.Object);
+            var result = await _service.AddEntryAsync(eventType, payload);
 
-            var rawEntry = new LedgerEntry
-            {
-                EventType = "TEST_EVENT",
-                PreviousHash = string.Empty,
-                Payload = new AuditedPayload()
-            };
-
-            // Act
-            var sealedEntry = await service.SealEntryAsync(rawEntry, token);
-
-            // Assert
-            Assert.Equal(GENESIS_HASH, sealedEntry.PreviousHash);
-            Assert.False(string.IsNullOrWhiteSpace(sealedEntry.CurrentHash));
+            Assert.NotNull(result);
+            Assert.Equal(expectedId, result.Id);
 
             _mockQueue.Verify(
-                q => q.EnqueueEntryAsync(sealedEntry, It.Is<CancellationToken>(ct => ct == token)),
+                q => q.EnqueueAsync(It.IsAny<LedgerTransactionContext>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
         [Fact]
-        public async Task SealEntryAsync_NextEntry_UsesPreviousEntryHash_AndEnqueues()
+        public async Task AddEntryAsync_WhenQueueThrows_PropagatesException()
         {
-            // Arrange
-            var token = CancellationToken.None;
-
-            var mockStore = new Mock<ILedgerStore>();
-            var firstEntry = CreateSealedEntry(GENESIS_HASH, "INITIAL_EVENT", 1, TEST_SECRET_KEY);
-
-            mockStore
-                .Setup(s => s.GetLastEntryAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(firstEntry);
-
             _mockQueue
-                .Setup(q => q.EnqueueEntryAsync(It.IsAny<LedgerEntry>(), It.IsAny<CancellationToken>()))
-                .Returns(ValueTask.CompletedTask);
+                .Setup(q => q.EnqueueAsync(It.IsAny<LedgerTransactionContext>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Queue full"));
 
-            var service = new LedgerService(_mockOptions.Object, mockStore.Object, _mockQueue.Object);
-
-            var rawEntry = new LedgerEntry
-            {
-                EventType = "SECOND_EVENT",
-                PreviousHash = string.Empty,
-                Payload = new AuditedPayload()
-            };
-
-            // Act
-            var sealedEntry = await service.SealEntryAsync(rawEntry, token);
-
-            // Assert
-            Assert.Equal(firstEntry.CurrentHash, sealedEntry.PreviousHash);
-            Assert.False(string.IsNullOrWhiteSpace(sealedEntry.CurrentHash));
-
-            _mockQueue.Verify(
-                q => q.EnqueueEntryAsync(sealedEntry, It.Is<CancellationToken>(ct => ct == token)),
-                Times.Once);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _service.AddEntryAsync("TEST", new AuditedPayload()));
         }
 
         [Fact]
         public async Task VerifyChainIntegrityAsync_ValidChain_ReturnsTrue()
         {
-            // Arrange
-            var token = CancellationToken.None;
+            var e1 = CreateSealedEntry(sequence: 1, previousHash: GENESIS_HASH, eventType: "E1", secretKey: TEST_SECRET_KEY);
+            var e2 = CreateSealedEntry(sequence: 2, previousHash: e1.CurrentHash!, eventType: "E2", secretKey: TEST_SECRET_KEY);
+            var e3 = CreateSealedEntry(sequence: 3, previousHash: e2.CurrentHash!, eventType: "E3", secretKey: TEST_SECRET_KEY);
 
-            var mockStore = new Mock<ILedgerStore>();
+            // Intentionally out-of-order to ensure verification does not rely on store ordering.
+            var validChain = new List<LedgerEntry> { e3, e1, e2 };
 
-            var e1 = CreateSealedEntry(GENESIS_HASH, "E1", 1, TEST_SECRET_KEY);
-            var e2 = CreateSealedEntry(e1.CurrentHash!, "E2", 2, TEST_SECRET_KEY);
-            var e3 = CreateSealedEntry(e2.CurrentHash!, "E3", 3, TEST_SECRET_KEY);
-
-            var validChain = new List<LedgerEntry> { e1, e2, e3 };
-
-            mockStore
+            _mockStore
                 .Setup(s => s.GetAllEntriesAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(validChain);
 
-            var service = new LedgerService(_mockOptions.Object, mockStore.Object, _mockQueue.Object);
+            var (isValid, reason) = await _service.VerifyChainIntegrityAsync();
 
-            // Act
-            var (isValid, reason) = await service.VerifyChainIntegrityAsync(token);
-
-            // Assert
             Assert.True(isValid);
-            Assert.Contains("Chain integrity successfully verified", reason);
-
-            mockStore.Verify(s => s.GetAllEntriesAsync(It.Is<CancellationToken>(ct => ct == token)), Times.Once);
+            Assert.Contains("Chain integrity", reason);
         }
 
         [Fact]
         public async Task VerifyChainIntegrityAsync_BrokenChainLink_ReturnsFalse()
         {
-            // Arrange
-            var token = CancellationToken.None;
+            var e1 = CreateSealedEntry(sequence: 1, previousHash: GENESIS_HASH, eventType: "E1", secretKey: TEST_SECRET_KEY);
 
-            var mockStore = new Mock<ILedgerStore>();
+            // Points to a wrong previous hash.
+            var e2Corrupted = CreateSealedEntry(sequence: 2, previousHash: "BAD_HASH_LINK", eventType: "E2", secretKey: TEST_SECRET_KEY);
 
-            var e1 = CreateSealedEntry(GENESIS_HASH, "E1", 1, TEST_SECRET_KEY);
-            var e2_CORRUPTED = CreateSealedEntry("BAD_HASH_LINK", "E2", 2, TEST_SECRET_KEY);
+            var corruptedChain = new List<LedgerEntry> { e2Corrupted, e1 };
 
-            var corruptedChain = new List<LedgerEntry> { e1, e2_CORRUPTED };
-
-            mockStore
+            _mockStore
                 .Setup(s => s.GetAllEntriesAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(corruptedChain);
 
-            var service = new LedgerService(_mockOptions.Object, mockStore.Object, _mockQueue.Object);
+            var (isValid, reason) = await _service.VerifyChainIntegrityAsync();
 
-            // Act
-            var (isValid, reason) = await service.VerifyChainIntegrityAsync(token);
-
-            // Assert
             Assert.False(isValid);
-            Assert.Contains("Chain link broken at entry ID", reason);
+            Assert.Contains("Chain link broken", reason);
+        }
 
-            mockStore.Verify(s => s.GetAllEntriesAsync(It.Is<CancellationToken>(ct => ct == token)), Times.Once);
+        [Fact]
+        public async Task VerifyChainIntegrityAsync_TamperedData_ReturnsFalse()
+        {
+            var e1 = CreateSealedEntry(sequence: 1, previousHash: GENESIS_HASH, eventType: "E1", secretKey: TEST_SECRET_KEY);
+
+            // Modify after hashing.
+            e1.Payload!.Description = "Tampered Content";
+
+            _mockStore
+                .Setup(s => s.GetAllEntriesAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync([e1]);
+
+            var (isValid, reason) = await _service.VerifyChainIntegrityAsync();
+
+            Assert.False(isValid);
+            Assert.Contains("tampering", reason, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static LedgerEntry CreateSealedEntry(long sequence, string previousHash, string eventType, string secretKey)
+        {
+            var entry = new LedgerEntry
+            {
+                Id = Guid.NewGuid(),
+                Timestamp = DateTimeOffset.UtcNow.AddMilliseconds(sequence), // stable-ish, but Sequence is the real order
+                Sequence = sequence,
+                EventType = eventType,
+                PreviousHash = previousHash,
+                Payload = new AuditedPayload
+                {
+                    ActorId = $"Actor{sequence}",
+                    Description = $"Event {sequence}"
+                }
+            };
+
+            entry.CurrentHash = HashUtility.CalculateHash(entry, secretKey);
+            return entry;
         }
     }
 }

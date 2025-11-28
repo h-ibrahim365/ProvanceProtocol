@@ -39,5 +39,11 @@ namespace Provance.Core.Data
         /// The content of the audited event (business data).
         /// </summary>
         public required AuditedPayload Payload { get; set; }
+
+        /// <summary>
+        /// Monotonic sequence number assigned by the single-writer.
+        /// Used for deterministic ordering (timestamps can collide under load).
+        /// </summary>
+        public long Sequence { get; set; }
     }
 }

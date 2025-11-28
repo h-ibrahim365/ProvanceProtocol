@@ -1,88 +1,156 @@
-# 🔱 PROVANCE Protocol — The Bulletproof Data Ledger
+<p align="center">
+  <img src="./icons/provanceProtocol.png" alt="PROVANCE Protocol logo" width="160" />
+</p>
 
-**Cryptographically guarantee the integrity of your application’s audit logs (tamper-evident).**
+<h1 align="center">🔱 PROVANCE Protocol</h1>
 
-[![Sponsor](https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#white)](https://github.com/sponsors/h-ibrahim365)
-[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)](https://github.com/h-ibrahim365/ProvanceProtocol/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
+<p align="center">
+  <b>Tamper-evident audit trails for .NET — protocol-first, verifiable, and production-minded.</b><br/>
+  Cryptographically detect log tampering using hash-chaining (HMAC-SHA256) and deterministic ordering.
+</p>
 
-| Package | Status | Version |
-| :--- | :--- | :--- |
-| **C# (NuGet)** | Active | [![NuGet](https://img.shields.io/nuget/v/Provance.Core.svg?style=flat)](https://www.nuget.org/packages/Provance.Core) |
-| **Java (Maven)** | Planning | Soon |
-| **Rust (Cargo)** | Planning | Soon |
+<p align="center">
+  <a href="https://github.com/sponsors/h-ibrahim365">
+    <img src="https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=white" alt="Sponsor" />
+  </a>
+  <a href="https://github.com/h-ibrahim365/ProvanceProtocol/actions">
+    <img src="https://img.shields.io/badge/Build-Passing-brightgreen" alt="Build Status" />
+  </a>
+  <a href="LICENSE.md">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" />
+  </a>
+</p>
 
 ---
 
-## Table of Contents
+## Packages
+
+| Package | Status | Version |
+| :--- | :--- | :--- |
+| **Provance.Core** (NuGet) | Active | [![NuGet](https://img.shields.io/nuget/v/Provance.Core.svg?style=flat)](https://www.nuget.org/packages/Provance.Core) |
+| **Provance.AspNetCore.Middleware** (NuGet) | Active | [![NuGet](https://img.shields.io/nuget/v/Provance.AspNetCore.Middleware.svg?style=flat)](https://www.nuget.org/packages/Provance.AspNetCore.Middleware) |
+| **Provance.Storage.MongoDB** (NuGet) | Active | [![NuGet](https://img.shields.io/nuget/v/Provance.Storage.MongoDB.svg?style=flat)](https://www.nuget.org/packages/Provance.Storage.MongoDB) |
+| **Provance (Java)** (Maven) | Planned | After **v1.0.0** |
+| **Provance (Rust)** (Cargo) | Planned | After **v1.0.0** |
+
+---
+
+## Table of contents
 
 - [The Problem](#the-problem)
-- [Core Features (V0.0.2)](#core-features)
-- [Security Model (Threat Model)](#security-model)
-- [Quick Start (.NET)](#quick-start)
+- [What PROVANCE is (and isn’t)](#what-provance-is-and-isnt)
+- [Core features (current)](#core-features-current)
+- [v0.0.3 changes](#v003-changes)
+- [Breaking change (v0.0.2 → v0.0.3)](#breaking-change-v002--v003)
+- [Security model (threat model)](#security-model-threat-model)
+- [Quick start (.NET)](#quick-start-net)
   - [Installation](#installation)
-  - [Configuration (appsettings.json)](#configuration)
-  - [Program.cs (Minimal API example)](#programcs-minimal-api-example)
-- [Roadmap (V0.0.3 → V1.0.0)](#roadmap)
-- [After V1.0.0 (V2.0.0+)](#after-v1)
-- [When should you publish V1.0.0?](#when-v1)
-- [Contribution and Development](#contributing)
-- [Sponsorship](#sponsorship)
+  - [Configuration (appsettings.json)](#configuration-appsettingsjson)
+  - [Minimal API example](#minimal-api-example)
+- [Deployment & guarantees](#deployment--guarantees)
+- [Roadmap (Premium V1)](#roadmap-premium-v1)
+- [After v1.0.0](#after-v100)
+- [Java & Rust SDK plan](#java--rust-sdk-plan)
 - [License](#license)
 
 ---
 
-<a id="the-problem"></a>
-## ⚡️ The Problem: Logs Lie. The Solution: Cryptography.
+## The Problem
 
-In enterprise and compliance-driven applications, standard audit logs are **mutable** and can be **deleted or modified** by an attacker. This compromises forensic trust and compliance efforts (GDPR, ISO 27001).
+Standard audit logs are easy to **modify**, **backdate**, or **delete** — especially by privileged insiders or attackers who gained access to your database.
 
-**PROVANCE** transforms audit logs into a **tamper-evident ledger** by applying **cryptographic hash-chaining** at the application layer. If a past record is modified, the chain breaks and verification fails.
-
----
-
-<a id="core-features"></a>
-## ✅ Core Features — V0.0.2 (Production Readiness)
-
-- **🛡️ Tamper-Evident Hash-Chaining (HMAC-SHA256)**  
-  Each entry is sealed with a `CurrentHash` derived from its content + `PreviousHash`, signed with **HMAC-SHA256** using a secret key.
-
-- **⚡️ Async Producer/Consumer Pipeline**  
-  Audit events are buffered via `System.Threading.Channels` and persisted by a dedicated background consumer (`LedgerWriterService`).
-
-- **🔁 Resilient Persistence**  
-  Automatic retry with exponential backoff in `LedgerWriterService` for transient store failures.
-
-- **🗄️ MongoDB Store (ILedgerStore)**  
-  A production-ready `ILedgerStore` implementation for MongoDB (persistence + scalability).
-
-### A note about “Zero-Blocking”
-PROVANCE decouples your request pipeline from **database writes** by using a background consumer.  
-If you use a **bounded** channel with backpressure, the system may intentionally slow producers under sustained overload to protect memory.  
-A “strict non-blocking” mode (always returns immediately) requires a **durable fallback** (outbox/spool) — planned toward the beta line.
+**PROVANCE** turns your application audit events into a **tamper-evident ledger**: each entry depends on the previous one via cryptographic chaining.
+If someone changes an older record, verification fails.
 
 ---
 
-<a id="security-model"></a>
-## 🔍 Security Model (Threat Model)
+## What PROVANCE is (and isn’t)
+
+✅ PROVANCE is:
+- A **protocol + SDKs** to create **verifiable, tamper-evident audit trails**
+- A **library you can integrate quickly** (ASP.NET Core middleware + stores)
+
+❌ PROVANCE is not:
+- A “blockchain network”
+- A full prevention system that stops deletion by a root/admin attacker
+- A replacement for SIEM/log pipelines (it complements them)
+
+---
+
+## Core features (current)
+
+- **Tamper-evident hash chaining (HMAC-SHA256)**
+  Each entry has a `CurrentHash` computed from its signed content + `PreviousHash`, using **HMAC-SHA256** with a secret key.
+
+- **Deterministic ordering (`Sequence`)**
+  A monotonic `Sequence` is assigned by the Single Writer. This avoids timestamp collisions and makes verification deterministic.
+
+- **Single Writer (anti-fork)**
+  Concurrent producers are linearized through one background writer loop, preventing ledger forks under load.
+
+- **Store abstraction (`ILedgerStore`)**
+  MongoDB store is available today.
+
+- **Integrity verification API**
+  Verify chain integrity and pinpoint where it breaks.
+
+---
+
+## v0.0.3 changes
+
+Implemented in **v0.0.3**:
+- single-writer sequencing + deterministic ordering via `Sequence`
+- hashing updated to include `Sequence` (ordering changes become tamper-evident)
+- stores updated to use `Sequence` for ordering (`GetLastEntryAsync`, `GetAllEntriesAsync`)
+- verification runs in `Sequence` order and checks:
+  - chain continuity (`PreviousHash`)
+  - cryptographic integrity (recomputed HMAC)
+
+---
+
+## Breaking change (v0.0.2 → v0.0.3)
+
+v0.0.3 changes the protocol in a way that makes existing ledgers from v0.0.2 **incompatible**:
+
+- `Sequence` is now part of the ordering model.
+- The HMAC signed content now includes `Sequence`.
+
+### Required migration (recommended and supported path)
+
+**Start a new ledger collection.** Do not reuse a v0.0.2 collection.
+
+1. Choose a new collection name (example: `ledger_entries_v1`)
+2. Update your config (`MongoDb:CollectionName`)
+3. Deploy / run the app
+
+This keeps your v0.0.2 ledger as an archived historical ledger, and v0.0.3+ as the new deterministic ledger.
+
+> v0.x is pre-release: breaking changes can happen between minor versions.
+
+---
+
+## Security model (threat model)
+
+PROVANCE aims to **detect tampering**.
 
 ✅ Detects:
-- modification of past entries (payload, type, timestamps, hashes)
-- chain breaks / partial tampering
+- modifications to stored entries (payload/type/timestamps/sequence/hashes)
+- broken chain continuity (mismatched `PreviousHash` / `CurrentHash`)
+- reordering that breaks continuity
 
-⚠️ Does **NOT** prevent:
-- total deletion of the underlying database by a fully privileged attacker
+⚠️ Does **not** prevent:
+- full deletion of the database (or an outbox) by a fully privileged attacker
+- rewriting history if an attacker has both **write access** and the **HMAC secret key**
 
-Planned mitigations:
-- external anchoring / immutable storage (WORM) / periodic checkpoints
+Mitigations (ops guidance / roadmap):
+- strict key management guidance (KMS, rotation, least privilege)
+- optional external anchoring / immutable backends (after v1)
 
 ---
 
-<a id="quick-start"></a>
-## 🛠️ Quick Start (C# / .NET)
+## Quick start (.NET)
 
-<a id="installation"></a>
-### 1) Installation
+### Installation
 
 ```bash
 dotnet add package Provance.Core
@@ -91,8 +159,7 @@ dotnet add package Provance.AspNetCore.Middleware
 dotnet add package Provance.Storage.MongoDB
 ```
 
-<a id="configuration"></a>
-### 2) Configuration (appsettings.json)
+### Configuration (appsettings.json)
 
 ```json
 {
@@ -103,32 +170,32 @@ dotnet add package Provance.Storage.MongoDB
   "MongoDb": {
     "ConnectionString": "mongodb://localhost:27017",
     "DatabaseName": "provance",
-    "CollectionName": "ledger_entries"
+    "CollectionName": "ledger_entries_v1"
   }
 }
 ```
 
-<a id="programcs-minimal-api-example"></a>
-### 3) Program.cs (Minimal API example)
+### Minimal API example
 
 ```csharp
-using Microsoft.AspNetCore.Mvc;
 using Provance.AspNetCore.Middleware.Extensions;
 using Provance.Core.Services.Interfaces;
 using Provance.Storage.MongoDB.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// OPTIONAL: enable MongoDB storage (otherwise fallback In-Memory store is used)
+// Optional: MongoDB storage (recommended for production)
+// 1) Install:
+//    dotnet add package Provance.Storage.MongoDB
+// 2) Uncomment the next line to enable MongoDB persistence:
 // builder.Services.AddProvanceMongoStorage(builder.Configuration);
 
-// Register Provance services (queue + ledger service + background writer + fallback store if needed)
+// Core services + options
 builder.Services.AddProvanceLogging(options =>
 {
-    var provanceConfig = builder.Configuration.GetSection("ProvanceProtocol");
-
-    options.GenesisHash = provanceConfig["GenesisHash"] ?? string.Empty;
-    options.SecretKey = provanceConfig["SecretKey"] ?? string.Empty;
+    var cfg = builder.Configuration.GetSection("ProvanceProtocol");
+    options.GenesisHash = cfg["GenesisHash"] ?? string.Empty;
+    options.SecretKey = cfg["SecretKey"] ?? string.Empty;
 });
 
 var app = builder.Build();
@@ -148,110 +215,89 @@ app.Run();
 
 ---
 
-<a id="roadmap"></a>
-## 📈 Roadmap (V0.0.3 → V1.0.0)
+## Deployment & guarantees
 
-### 🛣️ V0.0.3 — Correctness under Concurrency
-- Guarantee a **linear chain** under high concurrent producers (avoid “forks”).
-- Strict cancellation + shutdown behavior (queue/writer).
-- Concurrency tests + integrity verification stress tests.
+### Writer model (current)
+**v0.0.3 is intentionally single-writer / single-instance oriented.**
+You can still handle many concurrent HTTP requests; correctness is guaranteed by sequencing ledger appends through a single writer.
 
-### 🛣️ V0.0.4 — Observability & Performance Gates
-- Health checks (writer/store).
-- Metrics & diagnostics (queue depth, retry count, write latency).
-- **Benchmark suite** integrated in CI (baseline + regression detection).
+### Acknowledgement semantics (current)
+In v0.0.3 the API call returns only after the Single Writer has **persisted** the entry.
+This is the strongest correctness mode, but it increases end-to-end latency.
 
-### 🛣️ V0.0.5 — Stores & Developer Experience
-- MongoDB options tuning (timeouts, write concerns, indexes).
-- Optional additional store (e.g., PostgreSQL) **or** file-based append-only store for demos/tests.
-- Docker compose example (API + Mongo).
+Roadmap:
+- v0.0.4 introduces configurable acknowledgement modes and a durable outbox.
 
-### 🛣️ V0.0.6 — Protocol Hardening (Polyglot Preparation)
-- Canonical serialization rules (UUID, timestamp precision, field order, hex casing).
-- Official **test vectors** (input → expected hash) to guarantee cross-language compatibility.
-- Spec versioning clarified.
-
-### 🛣️ V0.0.7 — GDPR-Friendly Building Blocks
-- Payload minimization helpers (redaction/whitelisting).
-- Optional “payload reference” mode (PII off-ledger + hash on-ledger).
-- Retention hooks.
-
-### 🛣️ V0.0.8 — Merkle Batching (Performance & Pruning Foundations)
-- Periodic Merkle root calculation (`LedgerSealerService`).
-- Checkpoints that accelerate verification.
-- Batch integrity proofs.
-
-### 🛣️ V0.9.0 — Public Beta (LinkedIn / Feedback Release)
-Goal: **API stability + excellent docs + real-world feedback**.
-- Freeze public API surface (breaking changes minimized).
-- Samples (Minimal API / MVC / Worker).
-- Migration guide (if needed).
-- Issue templates + contribution guide tuned for community input.
-
-### 🚀 V1.0.0 — Stable Release
-- Strong stability guarantees (backwards compatibility policy).
-- Comprehensive integration + perf tests in CI.
-- Clear threat model + operational guidance.
-- Optional anti-deletion strategy (anchoring and/or immutable storage integration, if included by then).
+### Overload / saturation (roadmap)
+Overload handling will be formalized in v0.0.4:
+- **FailFast**: return 503/429 when you cannot guarantee durability (no silent loss)
+- **Backpressure**: async waiting until there is capacity
 
 ---
 
-<a id="after-v1"></a>
-## 🧩 After V1.0.0 (V2.0.0+)
+## Roadmap (Premium V1)
 
-Some problems are genuinely hard and often require a major version to evolve safely:
+This roadmap is designed so that **v1.0.0** means:
+- predictable behavior under concurrency,
+- clear guarantees,
+- crash-safe durability (when enabled),
+- stable protocol surface for future Java/Rust SDKs.
 
-- Distributed writers / multi-instance correctness (single chain head)
-- Strict non-blocking without data loss (durable outbox + replay)
-- Cross-language byte-for-byte canonicalization (payload edge cases)
-- GDPR right-to-erasure without losing auditability (termination/rebasing)
-- Anchoring backends standardization (avoid vendor lock-in)
+### ✅ v0.0.3 — Correctness under concurrency (anti-fork)
+- Guarantee a **linear chain** under high concurrent producers (no forks)
+- Single Writer sequencing + deterministic ordering (`Sequence`)
+- Verification and store ordering updated
 
----
+### 🛡️ v0.0.4 — Durable non-blocking (Outbox + replay)
+- Introduce acknowledgement levels (e.g. persisted outbox vs stored in ledger)
+- Durable outbox (WAL/spool) + replay on startup
+- Overload policies: FailFast / Backpressure (no silent loss)
+- Checkpointing + tail/partial-write recovery + fail-closed option
 
-<a id="when-v1"></a>
-## 🗓️ When should you publish V1.0.0? (Versioning Guidance)
+### 🔒 v0.0.5 — Canonical serialization + official test vectors
+- Canonical rules (timestamps, UUIDs, field order, casing, encoding)
+- Test vectors (input → canonical bytes → expected hash)
+- Interop contract for Java/Rust starts here
 
-Publish **V1.0.0** when you’re ready to make a stability promise to your users:
+### 📊 v0.0.6 — Observability & production readiness
+- Health checks (writer, store, outbox)
+- Metrics (outbox lag, queue depth, retry count, write latency)
+- Benchmarks in CI (perf regression detection)
 
-- Public API is stable (you can support it without breaking changes for a while)
-- Protocol spec is stable (canonical serialization + test vectors included)
-- Integration tests (store/writer/verification) + performance baselines are solid
-- README matches reality (guarantees + limitations + threat model)
-- Beta feedback (0.9.x) is incorporated and migration is clear
-
-Rule of thumb:
-- **0.x** = you can still break APIs freely
-- **1.0.0** = you commit to stability and predictable upgrades
-
----
-
-<a id="contributing"></a>
-## 💻 Contribution and Development
-
-PROVANCE is an open-source, polyglot protocol designed for maximum language compatibility.  
-All contributors must follow the cryptographic and data structure rules defined in `PROVANCE_SPEC.md`.
-
-| Component | Language | Status | Location |
-| :--- | :--- | :--- | :--- |
-| Provance.Core | C# | Active | src/dotnet/Provance.Core |
-| Provance.AspNetCore.Middleware | C# | Active | src/dotnet/Provance.AspNetCore.Middleware |
-| Provance.Storage.MongoDB | C# | Active | src/dotnet/Provance.Storage.MongoDB |
-| Provance.Java | Java | Planning | src/java |
-| Provance.Rust | Rust | Planning | src/rust |
+### 🚀 v1.0.0 — Premium stable release
+Release criteria:
+- Concurrency correctness proven by tests (no forks)
+- Durable outbox mode with replay + checkpoints (when enabled)
+- Canonical serialization + test vectors published
+- Clear guarantees and limitations documented
 
 ---
 
-<a id="sponsorship"></a>
-## 💖 Sponsorship
+## After v1.0.0
 
-The development and long-term maintenance of PROVANCE are only possible with the support of the community and our corporate users.  
-If PROVANCE is critical to your organization's security or compliance posture, please consider sponsoring this project:
-https://github.com/sponsors/h-ibrahim365
+- Merkle batching / checkpoints / proofs (performance + partial verification proofs)
+- Distributed writers / multi-instance correctness
+- Anchoring providers (optional external anchoring / immutable stores)
+- Additional stores (PostgreSQL, etc.)
 
 ---
 
-<a id="license"></a>
-## 📝 License
+## Java & Rust SDK plan
+
+Java and Rust SDKs will be developed **after v1.0.0** once the protocol is stable.
+
+Why after v1.0.0?
+- canonical serialization must be finalized
+- test vectors must exist
+- CI must run conformance tests across languages
+
+First deliverable (portable core):
+- `seal(draft, key) -> sealedEntry`
+- `verify(chain, key) -> ok / failure(index, reason)`
+- same canonicalization + same test vectors as .NET
+
+---
+
+## License
 
 MIT — see [LICENSE.md](LICENSE.md).

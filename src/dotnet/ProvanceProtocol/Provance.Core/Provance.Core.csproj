@@ -1,27 +1,48 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<?xml version='1.0' encoding='utf-8'?>
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
 
-  <PropertyGroup>
-	<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-	  
-	<IsPackable>true</IsPackable>
-	<PackageId>Provance.Core</PackageId>
-	<Version>0.0.2</Version>
-	<Authors>H. Id Brahim</Authors>
-	<Description>Core implementation of the PROVANCE blockchain protocol logic.</Description>
-	<PackageTags>blockchain;audit;ledger;immutable</PackageTags>
+		<IsPackable>true</IsPackable>
+		<PackageId>Provance.Core</PackageId>
+		<Version>0.0.3</Version>
 
-	<RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
-	<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<Authors>H. Id Brahim</Authors>
+		<Title>PROVANCE Core</Title>
+		<Description>Core SDK for PROVANCE: tamper-evident audit trails via HMAC-SHA256 hash-chaining and a single-writer ledger model.</Description>
+		<PackageTags>audit;tamper-evident;ledger;hmac;hash-chaining;security;compliance;log-integrity;dotnet</PackageTags>
+		<PackageReleaseNotes>v0.0.3: Single-writer correctness + Sequence ordering.</PackageReleaseNotes>
+		<Copyright>Copyright (c) 2025 Hakim ID BRAHIM</Copyright>
+		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 
-	<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<RepositoryType>git</RepositoryType>
+		<RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/h-ibrahim365/ProvanceProtocol</PackageProjectUrl>
 
-  </PropertyGroup>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>provanceCore.png</PackageIcon>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
-    <PackageReference Include="Polly" Version="8.6.5" />
-  </ItemGroup>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<Deterministic>true</Deterministic>
+		<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+		<PackageReference Include="Polly" Version="8.6.5" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<None Include="..\..\..\..\icons\provanceCore.png" Pack="true" PackagePath="\" />
+	</ItemGroup>
 </Project>

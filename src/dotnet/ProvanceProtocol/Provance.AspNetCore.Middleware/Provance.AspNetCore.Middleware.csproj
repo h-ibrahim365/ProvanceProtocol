@@ -1,30 +1,49 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-	<PropertyGroup>
-		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-
-		<IsPackable>true</IsPackable>
-		<PackageId>Provance.AspNetCore.Middleware</PackageId>
-		<Version>0.0.2</Version>
-		<Authors>H. Id Brahim</Authors>
-		<PackageLicenseExpression>MIT</PackageLicenseExpression>
-		<RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
-		<PackageTags>blockchain;aspnetcore;middleware;ledger;audit</PackageTags>
-		<GenerateDocumentationFile>true</GenerateDocumentationFile>
-
-		<AssemblyName>Provance.AspNetCore.Middleware</AssemblyName>
-		<RootNamespace>Provance.AspNetCore.Middleware</RootNamespace>
-		<Description>Middleware and extensions for integrating the Provance Ledger Core into ASP.NET Core applications.</Description>
-	</PropertyGroup>
-
-	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\Provance.Core\Provance.Core.csproj" />
-	</ItemGroup>
-
+<Project Sdk="Microsoft.NET.Sdk" ToolsVersion="Current">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>Provance.AspNetCore.Middleware</PackageId>
+    <Version>0.0.3</Version>
+    <Authors>H. Id Brahim</Authors>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
+    <PackageTags>aspnetcore;middleware;audit;tamper-evident;ledger;security;hmac;log-integrity</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>Provance.AspNetCore.Middleware</AssemblyName>
+    <RootNamespace>Provance.AspNetCore.Middleware</RootNamespace>
+    <Description>ASP.NET Core middleware + DI helpers for PROVANCE tamper-evident audit trails.</Description>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/h-ibrahim365/ProvanceProtocol</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>provanceMiddleWare.png</PackageIcon>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <Title>PROVANCE ASP.NET Core Middleware</Title>
+    <PackageReleaseNotes>v0.0.3: Single-writer correctness + Sequence ordering.</PackageReleaseNotes>
+    <Copyright>Copyright (c) 2025 Hakim ID BRAHIM</Copyright>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <FileUpgradeFlags>
+    </FileUpgradeFlags>
+    <UpgradeBackupLocation>
+    </UpgradeBackupLocation>
+    <OldToolsVersion>2.0</OldToolsVersion>
+    <ProjectGuid>{267A9EE2-57CF-4864-9C00-9B76D7DAA080}</ProjectGuid>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\..\..\icons\provanceMiddleWare.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Provance.Core\Provance.Core.csproj" />
+  </ItemGroup>
 </Project>

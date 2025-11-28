@@ -30,33 +30,40 @@ namespace Provance.Core.Utilities
         };
 
         /// <summary>
-        /// Calculates the HMAC-SHA256 signature of a LedgerEntry using a secret key.
-        /// The signature is calculated on a canonical JSON representation of the entry.
+        /// Calculates the HMAC-SHA256 signature of a <see cref="LedgerEntry"/> using a secret key.
+        /// The signature is computed over a deterministic JSON representation of the entry that:
+        /// excludes <c>CurrentHash</c>, includes <c>Sequence</c> to make ordering tamper-evident,
+        /// and normalizes <c>PreviousHash</c> to lowercase for stable comparisons.
         /// </summary>
         /// <param name="entry">The ledger entry to sign.</param>
         /// <param name="secretKey">The secret key used for HMAC signing.</param>
-        /// <returns>The HMAC-SHA256 signature string in hexadecimal format.</returns>
+        /// <returns>A lowercase hexadecimal HMAC-SHA256 signature.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="entry"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="secretKey"/> is null or whitespace.</exception>
         public static string CalculateHash(LedgerEntry entry, string secretKey)
         {
-            // 1. Create a temporary object that does NOT include CurrentHash
-            // to ensure it is omitted from the calculated hash.
+            ArgumentNullException.ThrowIfNull(entry);
+            ArgumentException.ThrowIfNullOrWhiteSpace(secretKey);
+
+            // Do not include CurrentHash in the signed content.
             var entryToHash = new
             {
-                // Include all relevant properties in a deterministic order
+                // Include Sequence so ordering is tamper-evident.
+                sequence = entry.Sequence,
+
                 id = entry.Id,
                 timestamp = entry.Timestamp,
-                previousHash = entry.PreviousHash,
+
+                // Normalize to avoid case-related mismatches.
+                previousHash = entry.PreviousHash?.ToLowerInvariant(),
+
                 eventType = entry.EventType,
                 payload = entry.Payload
             };
 
-            // 2. Serialize the object into deterministic JSON
             string jsonString = JsonSerializer.Serialize(entryToHash, CanonicalOptions);
 
-            // 3. Calculate the HMAC-SHA256 signature
             byte[] hashBytes = ComputeHmacSha256(jsonString, secretKey);
-
-            // 4. Convert hash bytes to hexadecimal string (Optimized)
             return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
 
