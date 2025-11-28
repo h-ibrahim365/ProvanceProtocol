@@ -3,7 +3,6 @@ using Provance.AspNetCore.Middleware.Data;
 using Provance.AspNetCore.Middleware.Dtos;
 using Provance.AspNetCore.Middleware.Extensions;
 using Provance.Core.Services.Interfaces;
-using Provance.Storage.MongoDB.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 

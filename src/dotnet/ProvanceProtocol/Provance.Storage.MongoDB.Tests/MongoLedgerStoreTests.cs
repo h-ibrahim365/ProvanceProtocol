@@ -2,10 +2,9 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
+using MongoDB.Driver;
 using Provance.Core.Data;
-using Provance.Storage.MongoDB;
 using Testcontainers.MongoDb;
-using Xunit;
 
 namespace Provance.Storage.MongoDB.Tests
 {
@@ -16,19 +15,14 @@ namespace Provance.Storage.MongoDB.Tests
             .Build();
 
         private MongoLedgerStore _store = null!;
+        private MongoDbOptions _dbOptions = null!;
 
         public async Task InitializeAsync()
         {
             await _mongoContainer.StartAsync();
 
-            try
-            {
-                _ = BsonSerializer.SerializerRegistry.GetSerializer<Guid>();
-            }
-            catch
-            {
-                BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
-            }
+            try { _ = BsonSerializer.SerializerRegistry.GetSerializer<Guid>(); }
+            catch { BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard)); }
 
             if (!BsonClassMap.IsClassMapRegistered(typeof(LedgerEntry)))
             {
@@ -36,19 +30,19 @@ namespace Provance.Storage.MongoDB.Tests
                 {
                     cm.AutoMap();
                     cm.MapIdMember(c => c.Id);
-                    cm.MapMember(c => c.Timestamp)
-                        .SetSerializer(new DateTimeOffsetSerializer(BsonType.String));
+                    cm.MapMember(c => c.Timestamp).SetSerializer(new DateTimeOffsetSerializer(BsonType.String));
+                    cm.MapMember(c => c.Sequence);
                 });
             }
 
-            var options = Options.Create(new MongoDbOptions
+            _dbOptions = new MongoDbOptions
             {
                 ConnectionString = _mongoContainer.GetConnectionString(),
                 DatabaseName = "integration_test_db",
                 CollectionName = "ledger_entries"
-            });
+            };
 
-            _store = new MongoLedgerStore(options);
+            _store = new MongoLedgerStore(Options.Create(_dbOptions));
         }
 
         public async Task DisposeAsync()
@@ -56,106 +50,141 @@ namespace Provance.Storage.MongoDB.Tests
             await _mongoContainer.DisposeAsync();
         }
 
+        private async Task ClearCollectionAsync(CancellationToken ct)
+        {
+            var client = new MongoClient(_dbOptions.ConnectionString);
+            var db = client.GetDatabase(_dbOptions.DatabaseName);
+            var collection = db.GetCollection<LedgerEntry>(_dbOptions.CollectionName);
+
+            await collection.DeleteManyAsync(Builders<LedgerEntry>.Filter.Empty, ct);
+        }
+
         [Fact]
         public async Task WriteEntryAsync_ShouldPersistData_AndRetrieveById()
         {
-            // Arrange
             var ct = CancellationToken.None;
+            await ClearCollectionAsync(ct);
 
             var entryId = Guid.NewGuid();
             var entry = new LedgerEntry
             {
                 Id = entryId,
                 Timestamp = DateTimeOffset.UtcNow,
+                Sequence = 1,
                 EventType = "TEST_WRITE",
                 PreviousHash = "GENESIS_MOCK",
                 Payload = new AuditedPayload { ActorId = "Tester", Description = "Integration Test Payload" },
                 CurrentHash = "HASH_123"
             };
 
-            // Act
             await _store.WriteEntryAsync(entry, ct);
             var retrievedEntry = await _store.GetEntryByIdAsync(entryId, ct);
 
-            // Assert
             Assert.NotNull(retrievedEntry);
             Assert.Equal(entryId, retrievedEntry!.Id);
             Assert.Equal("TEST_WRITE", retrievedEntry.EventType);
+            Assert.Equal(1, retrievedEntry.Sequence);
             Assert.Equal("Tester", retrievedEntry.Payload.ActorId);
         }
 
         [Fact]
-        public async Task GetLastEntryAsync_ShouldReturn_TheMostRecentEntry()
+        public async Task GetLastEntryAsync_ShouldReturn_TheHighestSequenceEntry()
         {
-            // Arrange
             var ct = CancellationToken.None;
+            await ClearCollectionAsync(ct);
 
-            var oldEntry = new LedgerEntry
+            var entry1 = new LedgerEntry
             {
                 Id = Guid.NewGuid(),
                 Timestamp = DateTimeOffset.UtcNow.AddHours(-1),
-                EventType = "OLD_EVENT",
+                Sequence = 1,
+                EventType = "SEQ_1",
                 PreviousHash = "A",
                 Payload = new AuditedPayload(),
                 CurrentHash = "A"
             };
 
-            var newEntry = new LedgerEntry
+            var entry2 = new LedgerEntry
             {
                 Id = Guid.NewGuid(),
-                Timestamp = DateTimeOffset.UtcNow,
-                EventType = "NEW_EVENT",
+                Timestamp = DateTimeOffset.UtcNow.AddHours(-2),
+                Sequence = 2,
+                EventType = "SEQ_2",
                 PreviousHash = "B",
                 Payload = new AuditedPayload(),
                 CurrentHash = "B"
             };
 
-            await _store.WriteEntryAsync(oldEntry, ct);
-            await _store.WriteEntryAsync(newEntry, ct);
+            await _store.WriteEntryAsync(entry1, ct);
+            await _store.WriteEntryAsync(entry2, ct);
 
-            // Act
             var lastEntry = await _store.GetLastEntryAsync(ct);
 
-            // Assert
             Assert.NotNull(lastEntry);
-            Assert.Equal(newEntry.Id, lastEntry!.Id);
-            Assert.Equal("NEW_EVENT", lastEntry.EventType);
+            Assert.Equal(entry2.Id, lastEntry!.Id);
+            Assert.Equal(2, lastEntry.Sequence);
+            Assert.Equal("SEQ_2", lastEntry.EventType);
         }
 
         [Fact]
-        public async Task GetAllEntriesAsync_ShouldReturn_ChronologicalOrder()
+        public async Task GetAllEntriesAsync_ShouldReturn_SequenceOrder()
         {
-            // Arrange
             var ct = CancellationToken.None;
+            await ClearCollectionAsync(ct);
 
-            var entry1 = new LedgerEntry { Id = Guid.NewGuid(), Timestamp = DateTimeOffset.UtcNow.AddMinutes(1), EventType = "1", PreviousHash = "", Payload = new AuditedPayload(), CurrentHash = "" };
-            var entry2 = new LedgerEntry { Id = Guid.NewGuid(), Timestamp = DateTimeOffset.UtcNow.AddMinutes(2), EventType = "2", PreviousHash = "", Payload = new AuditedPayload(), CurrentHash = "" };
-            var entry3 = new LedgerEntry { Id = Guid.NewGuid(), Timestamp = DateTimeOffset.UtcNow.AddMinutes(3), EventType = "3", PreviousHash = "", Payload = new AuditedPayload(), CurrentHash = "" };
+            var entry1 = new LedgerEntry
+            {
+                Id = Guid.NewGuid(),
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(3),
+                Sequence = 1,
+                EventType = "1",
+                PreviousHash = "",
+                Payload = new AuditedPayload(),
+                CurrentHash = ""
+            };
+
+            var entry2 = new LedgerEntry
+            {
+                Id = Guid.NewGuid(),
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(1),
+                Sequence = 2,
+                EventType = "2",
+                PreviousHash = "",
+                Payload = new AuditedPayload(),
+                CurrentHash = ""
+            };
+
+            var entry3 = new LedgerEntry
+            {
+                Id = Guid.NewGuid(),
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(2),
+                Sequence = 3,
+                EventType = "3",
+                PreviousHash = "",
+                Payload = new AuditedPayload(),
+                CurrentHash = ""
+            };
 
             await _store.WriteEntryAsync(entry2, ct);
             await _store.WriteEntryAsync(entry3, ct);
             await _store.WriteEntryAsync(entry1, ct);
 
-            // Act
             var allEntries = (await _store.GetAllEntriesAsync(ct)).ToList();
 
-            // Assert
             Assert.Equal(3, allEntries.Count);
-            Assert.Equal("1", allEntries[0].EventType);
-            Assert.Equal("2", allEntries[1].EventType);
-            Assert.Equal("3", allEntries[2].EventType);
+            Assert.Equal(1, allEntries[0].Sequence);
+            Assert.Equal(2, allEntries[1].Sequence);
+            Assert.Equal(3, allEntries[2].Sequence);
         }
 
         [Fact]
         public async Task GetEntryByIdAsync_ShouldReturnNull_WhenIdDoesNotExist()
         {
-            // Arrange
             var ct = CancellationToken.None;
+            await ClearCollectionAsync(ct);
 
-            // Act
             var result = await _store.GetEntryByIdAsync(Guid.NewGuid(), ct);
 
-            // Assert
             Assert.Null(result);
         }
     }

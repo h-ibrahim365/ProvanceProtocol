@@ -1,6 +1,6 @@
 ﻿using Provance.Core.Data;
 using Provance.Core.Services;
-using Xunit;
+using Provance.Core.Services.Internal;
 
 namespace Provance.Core.Tests.CoreLogic
 {
@@ -9,44 +9,43 @@ namespace Provance.Core.Tests.CoreLogic
         [Fact]
         public async Task Backpressure_ShouldBlockProducer_WhenQueueIsFull_AndResume_WhenSpaceAvailable()
         {
-            // Setup
             var queue = new EntryQueue();
 
-            var entry = new LedgerEntry
-            {
-                Id = Guid.NewGuid(),
-                EventType = "STRESS",
-                PreviousHash = string.Empty,
-                Payload = new AuditedPayload(),
-                CurrentHash = string.Empty
-            };
-
-            // Timeout safety: if something goes wrong, we don't hang forever.
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var token = cts.Token;
 
-            // Fill the queue to capacity (100_000)
+            // Fill to capacity (EntryQueue.MaxQueueCapacity = 100_000).
             for (int i = 0; i < 100_000; i++)
             {
-                await queue.EnqueueEntryAsync(entry, token);
+                var ctx = new LedgerTransactionContext
+                {
+                    EventType = "STRESS",
+                    Payload = new AuditedPayload()
+                };
+
+                await queue.EnqueueAsync(ctx, token);
             }
 
-            // 100_001st write should block (backpressure = Wait)
-            var producerTask = queue.EnqueueEntryAsync(entry, token).AsTask();
+            // This enqueue should wait (backpressure).
+            var blockedCtx = new LedgerTransactionContext
+            {
+                EventType = "STRESS",
+                Payload = new AuditedPayload()
+            };
 
-            // Verify it doesn't complete quickly
+            var producerTask = queue.EnqueueAsync(blockedCtx, token).AsTask();
+
             var firstRace = await Task.WhenAny(producerTask, Task.Delay(100, token));
             Assert.NotSame(producerTask, firstRace);
 
-            // Free up one slot (Consumption) — option A: via Reader with token (works even if Dequeue has no token)
+            // Consume one item to free a slot.
             _ = await queue.Reader.ReadAsync(token);
 
-            // Now the blocked producer should resume
             var secondRace = await Task.WhenAny(producerTask, Task.Delay(1000, token));
             Assert.Same(producerTask, secondRace);
 
-            await producerTask; // propagate exceptions if any
-            Assert.True(producerTask.IsCompletedSuccessfully, "The producer should have resumed successfully.");
+            await producerTask;
+            Assert.True(producerTask.IsCompletedSuccessfully);
         }
     }
 }

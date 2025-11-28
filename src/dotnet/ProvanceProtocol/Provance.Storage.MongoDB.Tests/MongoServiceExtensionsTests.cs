@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson.Serialization;
 using Provance.Core.Data;
 using Provance.Storage.MongoDB.Extensions;
-using Xunit;
 
 namespace Provance.Storage.MongoDB.Tests
 {
@@ -38,6 +37,9 @@ namespace Provance.Storage.MongoDB.Tests
             Assert.Null(exception);
 
             Assert.True(BsonClassMap.IsClassMapRegistered(typeof(LedgerEntry)));
+
+            var map = BsonClassMap.LookupClassMap(typeof(LedgerEntry));
+            Assert.Contains(map.AllMemberMaps, m => m.MemberName == nameof(LedgerEntry.Sequence));
         }
     }
 }

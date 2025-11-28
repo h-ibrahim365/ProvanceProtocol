@@ -1,11 +1,11 @@
 ﻿using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using Microsoft.Extensions.Options;
+using Provance.Benchmarks;
 using Provance.Core.Data;
 using Provance.Core.Options;
 using Provance.Core.Services;
 using Provance.Core.Services.Interfaces;
-using Provance.Benchmarks;
 
 // This line initiates the benchmark runner
 BenchmarkRunner.Run<ProvanceLoadTest>();
@@ -109,5 +109,9 @@ namespace Provance.Benchmarks
         /// <inheritdoc />
         public Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IEnumerable<LedgerEntry>>([]);
+
+        /// <inheritdoc />
+        public Task<bool> AcquireOrRenewLeaseAsync(string resource, string workerId, TimeSpan duration, CancellationToken cancellationToken = default)
+            => Task.FromResult(true);
     }
 }

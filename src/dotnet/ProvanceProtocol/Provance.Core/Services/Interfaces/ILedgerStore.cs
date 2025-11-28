@@ -44,5 +44,16 @@ namespace Provance.Core.Services.Interfaces
         /// <returns>A task that returns an ordered collection of all <see cref="LedgerEntry"/> objects.</returns>
         /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
         Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Attempts to acquire an exclusive, time-bound lease for a named resource, or renew an existing lease held by the same worker.
+        /// This is used to implement the "Single Writer" safety lock.
+        /// </summary>
+        /// <param name="resourceName">The name of the resource to lock (e.g., "ledger_writer_lock_v1").</param>
+        /// <param name="workerId">A unique ID identifying the worker instance attempting the operation (for ownership checking).</param>
+        /// <param name="duration">The duration for which the lease should be acquired or extended.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>A task that returns <c>true</c> if the lease was successfully acquired or renewed; <c>false</c> otherwise (e.g., if another non-expired instance holds the lock).</returns>
+        Task<bool> AcquireOrRenewLeaseAsync(string resourceName, string workerId, TimeSpan duration, CancellationToken cancellationToken = default);
     }
 }

@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Provance.AspNetCore.Middleware.Data;
-using Provance.Core.Data;
 using Provance.Core.Services.Interfaces;
 using System.Security.Claims;
 
@@ -130,14 +129,9 @@ namespace Provance.AspNetCore.Middleware
                 }
             };
 
-            var entry = new LedgerEntry
-            {
-                EventType = eventType,
-                PreviousHash = string.Empty, // overwritten by SealEntryAsync
-                Payload = payload
-            };
-
-            await ledgerService.SealEntryAsync(entry, cancellationToken);
+            // Use AddEntryAsync instead of creating the LedgerEntry manually.
+            // This ensures the entry goes through the Single Writer queue.
+            await ledgerService.AddEntryAsync(eventType, payload, cancellationToken);
         }
     }
 }

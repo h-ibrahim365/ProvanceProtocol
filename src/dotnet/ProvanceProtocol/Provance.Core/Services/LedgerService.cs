@@ -2,20 +2,16 @@
 using Provance.Core.Data;
 using Provance.Core.Options;
 using Provance.Core.Services.Interfaces;
+using Provance.Core.Services.Internal;
 using Provance.Core.Utilities;
 
 namespace Provance.Core.Services
 {
     /// <summary>
-    /// The core implementation of the PROVANCE protocol logic.
-    /// Handles chaining, hashing, and integrity verification.
+    /// The producer service for the PROVANCE protocol.
+    /// It validates requests, creates transaction contexts, and queues them for the Single Writer.
+    /// It also handles read-only verification operations.
     /// </summary>
-    /// <remarks>
-    /// Initializes a new instance of the LedgerService.
-    /// </remarks>
-    /// <param name="options">Protocol configuration options (e.g., Genesis Hash).</param>
-    /// <param name="store">The persistence layer to read/write entries.</param>
-    /// <param name="queue">The non-blocking queue to push sealed entries to.</param>
     public class LedgerService(IOptions<ProvanceOptions> options, ILedgerStore store, IEntryQueue queue) : ILedgerService
     {
         private readonly ProvanceOptions _options = ValidateProtocolOptions(options.Value);
@@ -23,11 +19,12 @@ namespace Provance.Core.Services
         private readonly IEntryQueue _queue = queue;
 
         /// <inheritdoc />
-        public Task<LedgerEntry> AddEntryAsync(
+        public async Task<LedgerEntry> AddEntryAsync(
             string eventType,
             AuditedPayload payload,
             CancellationToken cancellationToken = default)
         {
+            // 1. Validation
             if (string.IsNullOrWhiteSpace(eventType))
             {
                 throw new ArgumentException("EventType cannot be null or empty.", nameof(eventType));
@@ -39,38 +36,26 @@ namespace Provance.Core.Services
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            var rawEntry = new LedgerEntry
+            // 2. Create the Transaction Context (Draft + Promise)
+            // We do NOT calculate the hash here. We send the intent to the Single Writer.
+            var context = new LedgerTransactionContext
             {
-                Timestamp = DateTimeOffset.UtcNow,
-                PreviousHash = string.Empty, // Temporary, will be set in SealEntryAsync
                 EventType = eventType,
-                Payload = payload,
+                Payload = payload
             };
 
-            return SealEntryAsync(rawEntry, cancellationToken);
+            // 3. Enqueue the intent (may wait here if queue is full - Backpressure)
+            await _queue.EnqueueAsync(context, cancellationToken);
+
+            // 4. AWAIT ACKNOWLEDGMENT (Critical for v0.0.3 Correctness)
+            // We wait until the Single Writer has sequenced, hashed, and persisted the entry.
+            // This guarantees linear consistency to the client without race conditions.
+            return await context.AckSource.Task.WaitAsync(cancellationToken);
         }
 
-        /// <inheritdoc />
-        public async Task<LedgerEntry> SealEntryAsync(LedgerEntry entry, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // 1. Get the Previous Hash (Chain Link)
-            LedgerEntry? lastEntry = await _store.GetLastEntryAsync(cancellationToken);
-
-            // Set PreviousHash: use last entry's hash, or GenesisHash if ledger is empty.
-            entry.PreviousHash = lastEntry?.CurrentHash ?? _options.GenesisHash;
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // 2. Calculate CurrentHash (HMAC)
-            entry.CurrentHash = HashUtility.CalculateHash(entry, _options.SecretKey);
-
-            // 3. Enqueue for background persistence (may await due to backpressure)
-            await _queue.EnqueueEntryAsync(entry, cancellationToken);
-
-            return entry;
-        }
+        // NOTE: SealEntryAsync has been removed from this service. 
+        // In the Single Writer pattern, sealing is the exclusive responsibility of the background writer 
+        // to ensure strict sequencing.
 
         /// <inheritdoc />
         public Task<LedgerEntry?> GetLastEntryAsync(CancellationToken cancellationToken = default)
@@ -84,16 +69,21 @@ namespace Provance.Core.Services
             IEnumerable<LedgerEntry> rawEntries = await _store.GetAllEntriesAsync(cancellationToken);
 
             var allEntries = rawEntries
-                .OrderBy(e => e.Timestamp)
+                .OrderBy(e => e.Sequence)
                 .ThenBy(e => e.Id)
                 .ToList();
 
             if (allEntries.Count == 0)
-            {
                 return (true, "Ledger is empty, integrity assumed (Genesis Hash is the current reference).");
-            }
 
-            string expectedPreviousHash = _options.GenesisHash;
+            // Sequence must be usable if we rely on it.
+            if (allEntries.Any(e => e.Sequence <= 0))
+                return (false, "Invalid Sequence detected (Sequence must be > 0).");
+
+            if (allEntries.Select(e => e.Sequence).Distinct().Count() != allEntries.Count)
+                return (false, "Duplicate Sequence values detected (Sequence must be unique).");
+
+            string expectedPreviousHash = _options.GenesisHash.ToLowerInvariant();
 
             for (int i = 0; i < allEntries.Count; i++)
             {
@@ -101,7 +91,7 @@ namespace Provance.Core.Services
 
                 var entry = allEntries[i];
 
-                if (entry.PreviousHash != expectedPreviousHash)
+                if (!string.Equals(entry.PreviousHash, expectedPreviousHash, StringComparison.OrdinalIgnoreCase))
                 {
                     return (false,
                         $"Chain link broken at entry ID {entry.Id}. Expected PreviousHash: {expectedPreviousHash}, but found: {entry.PreviousHash}.");
@@ -109,7 +99,7 @@ namespace Provance.Core.Services
 
                 string calculatedHash = HashUtility.CalculateHash(entry, _options.SecretKey);
 
-                if (calculatedHash != entry.CurrentHash)
+                if (!string.Equals(calculatedHash, entry.CurrentHash, StringComparison.Ordinal))
                 {
                     return (false,
                         $"Data tampering detected in entry ID {entry.Id}. Calculated hash: {calculatedHash} does not match stored hash: {entry.CurrentHash}.");
