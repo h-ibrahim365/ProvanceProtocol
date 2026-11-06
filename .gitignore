@@ -60,3 +60,11 @@ Log files and database files
 
 *.db
 *.log
+# Local outputs
+TestResults/
+nupkg/
+src/dotnet/ProvanceProtocol/Provance.Example.Api/checkpoints/
+
+*.db
+*.db-wal
+*.db-shm

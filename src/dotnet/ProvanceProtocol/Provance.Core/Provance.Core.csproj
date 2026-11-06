@@ -1,48 +1,31 @@
-<?xml version='1.0' encoding='utf-8'?>
 <Project Sdk="Microsoft.NET.Sdk">
-	<PropertyGroup>
-		<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <PackageId>Provance.Core</PackageId>
+    <Title>PROVANCE Core</Title>
+    <Description>Tamper-evident audit trail for .NET: canonical JSON (RFC 8785), SHA-256 hash chain, pluggable signatures and external checkpoints.</Description>
+    <PackageTags>audit;audit-trail;tamper-evident;ledger;hash-chain;hmac;rfc8785;compliance</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>provanceCore.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+  </PropertyGroup>
 
-		<IsPackable>true</IsPackable>
-		<PackageId>Provance.Core</PackageId>
-		<Version>0.0.3</Version>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+  </ItemGroup>
 
-		<Authors>H. Id Brahim</Authors>
-		<Title>PROVANCE Core</Title>
-		<Description>Core SDK for PROVANCE: tamper-evident audit trails via HMAC-SHA256 hash-chaining and a single-writer ledger model.</Description>
-		<PackageTags>audit;tamper-evident;ledger;hmac;hash-chaining;security;compliance;log-integrity;dotnet</PackageTags>
-		<PackageReleaseNotes>v0.0.3: Single-writer correctness + Sequence ordering.</PackageReleaseNotes>
-		<Copyright>Copyright (c) 2025 Hakim ID BRAHIM</Copyright>
-		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Provance.Core.Tests" />
+  </ItemGroup>
 
-		<PackageLicenseExpression>MIT</PackageLicenseExpression>
-		<RepositoryType>git</RepositoryType>
-		<RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
-		<PackageProjectUrl>https://github.com/h-ibrahim365/ProvanceProtocol</PackageProjectUrl>
-
-		<PackageReadmeFile>README.md</PackageReadmeFile>
-		<PackageIcon>provanceCore.png</PackageIcon>
-
-		<GenerateDocumentationFile>true</GenerateDocumentationFile>
-
-		<PublishRepositoryUrl>true</PublishRepositoryUrl>
-		<EmbedUntrackedSources>true</EmbedUntrackedSources>
-		<IncludeSymbols>true</IncludeSymbols>
-		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
-		<Deterministic>true</Deterministic>
-		<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
-	</PropertyGroup>
-
-	<ItemGroup>
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
-		<PackageReference Include="Polly" Version="8.6.5" />
-		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<None Include="README.md" Pack="true" PackagePath="\" />
-		<None Include="..\..\..\..\icons\provanceCore.png" Pack="true" PackagePath="\" />
-	</ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\..\..\icons\provanceCore.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
 </Project>

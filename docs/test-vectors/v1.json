@@ -1,0 +1,120 @@
+{
+  "description": "PROVANCE format v1 test vectors. Entries form a chain: each previousHash is the hash of the entry before. See docs/SPEC.md.",
+  "formatVersion": 1,
+  "hmac": {
+    "keyId": "k1",
+    "secretUtf8": "provance-test-vector-key-0123456789abcdef"
+  },
+  "genesis": {
+    "ledgerId": "orders-api-test",
+    "input": "provance:genesis:v1:orders-api-test",
+    "hash": "4d3a57e72669c2ed54f1aaa3c299e5947ba4b40704941497f51160126193edf0"
+  },
+  "entries": [
+    {
+      "name": "simple payload",
+      "input": {
+        "ledgerId": "orders-api-test",
+        "sequence": 1,
+        "id": "6f1c2a5e-3b4d-4e8f-9a0b-1c2d3e4f5a6b",
+        "timestamp": "2026-01-15T09:30:00.123Z",
+        "eventType": "ORDER_CREATED",
+        "previousHash": "4d3a57e72669c2ed54f1aaa3c299e5947ba4b40704941497f51160126193edf0",
+        "keyId": "k1",
+        "payload": {
+          "orderId": "A-1001",
+          "amount": "49.90",
+          "currency": "EUR",
+          "actorId": "user-42"
+        }
+      },
+      "expected": {
+        "canonicalPayload": "{\"actorId\":\"user-42\",\"amount\":\"49.90\",\"currency\":\"EUR\",\"orderId\":\"A-1001\"}",
+        "payloadHash": "ba8d63c95b25fe6dcee6c66a5c383b4785de3cdb0a26fc2a06bfe04d5a307d6c",
+        "canonicalEnvelope": "{\"eventType\":\"ORDER_CREATED\",\"id\":\"6f1c2a5e-3b4d-4e8f-9a0b-1c2d3e4f5a6b\",\"keyId\":\"k1\",\"ledgerId\":\"orders-api-test\",\"payloadHash\":\"ba8d63c95b25fe6dcee6c66a5c383b4785de3cdb0a26fc2a06bfe04d5a307d6c\",\"previousHash\":\"4d3a57e72669c2ed54f1aaa3c299e5947ba4b40704941497f51160126193edf0\",\"sequence\":1,\"timestamp\":\"2026-01-15T09:30:00.123Z\",\"v\":1}",
+        "hash": "b7f0a0bf2d8b856a950e34d47bf393ee8353865b344fc04507580fccae6ba3ce",
+        "signature": "af6bc0bba8562f406df6c0206c6d8b58931fe770f84d9a0f5183e0ef3a94c3c0"
+      }
+    },
+    {
+      "name": "nested payload with key ordering",
+      "input": {
+        "ledgerId": "orders-api-test",
+        "sequence": 2,
+        "id": "0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70",
+        "timestamp": "2026-01-15T09:30:00.123Z",
+        "eventType": "ORDER_UPDATED",
+        "previousHash": "b7f0a0bf2d8b856a950e34d47bf393ee8353865b344fc04507580fccae6ba3ce",
+        "keyId": "k1",
+        "payload": {
+          "z": 1,
+          "a": {
+            "y": [
+              3,
+              2,
+              1
+            ],
+            "b": null,
+            "a": true
+          },
+          "m": false
+        }
+      },
+      "expected": {
+        "canonicalPayload": "{\"a\":{\"a\":true,\"b\":null,\"y\":[3,2,1]},\"m\":false,\"z\":1}",
+        "payloadHash": "3c1c00c32cfc9d9ce3aaf35a4b4dca543393d0fd10f3003a4e3059da33a1c5c3",
+        "canonicalEnvelope": "{\"eventType\":\"ORDER_UPDATED\",\"id\":\"0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70\",\"keyId\":\"k1\",\"ledgerId\":\"orders-api-test\",\"payloadHash\":\"3c1c00c32cfc9d9ce3aaf35a4b4dca543393d0fd10f3003a4e3059da33a1c5c3\",\"previousHash\":\"b7f0a0bf2d8b856a950e34d47bf393ee8353865b344fc04507580fccae6ba3ce\",\"sequence\":2,\"timestamp\":\"2026-01-15T09:30:00.123Z\",\"v\":1}",
+        "hash": "006795d2795aef26c5f10fc86540b827e5ee4cef082578ba04384a35bb79d3ca",
+        "signature": "a64d1a36da429f2a18d2eda5ef1c3bceeb66381f6a8b7898c254b6c8984599b3"
+      }
+    },
+    {
+      "name": "unicode, escapes and numbers",
+      "input": {
+        "ledgerId": "orders-api-test",
+        "sequence": 3,
+        "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+        "timestamp": "2026-01-15T09:30:01.000Z",
+        "eventType": "NOTE_ADDED",
+        "previousHash": "006795d2795aef26c5f10fc86540b827e5ee4cef082578ba04384a35bb79d3ca",
+        "keyId": "k1",
+        "payload": {
+          "text": "Café € \"quoted\" back\\slash\nline\u0001",
+          "ö": 1,
+          "emoji": "\uD83D\uDE00",
+          "numbers": [
+            1e21,
+            1e20,
+            0.000001,
+            1e-7,
+            4.50,
+            -0,
+            333333333.33333329,
+            5e-324
+          ]
+        }
+      },
+      "expected": {
+        "canonicalPayload": "{\"emoji\":\"\uD83D\uDE00\",\"numbers\":[1e+21,100000000000000000000,0.000001,1e-7,4.5,0,333333333.3333333,5e-324],\"text\":\"Café € \\\"quoted\\\" back\\\\slash\\nline\\u0001\",\"ö\":1}",
+        "payloadHash": "7811b290811942026ae214d754fe6fb53b8d6fd9935da58715021e8a4e0c38f3",
+        "canonicalEnvelope": "{\"eventType\":\"NOTE_ADDED\",\"id\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\",\"keyId\":\"k1\",\"ledgerId\":\"orders-api-test\",\"payloadHash\":\"7811b290811942026ae214d754fe6fb53b8d6fd9935da58715021e8a4e0c38f3\",\"previousHash\":\"006795d2795aef26c5f10fc86540b827e5ee4cef082578ba04384a35bb79d3ca\",\"sequence\":3,\"timestamp\":\"2026-01-15T09:30:01.000Z\",\"v\":1}",
+        "hash": "48434bf4cd1fd8132b1a307928755feaba07eec64a96924507685f82a7010b27",
+        "signature": "3a2b109c867238a1cd14b579f92c9314de2800bc1384092881c894921c573cf4"
+      }
+    }
+  ],
+  "checkpoint": {
+    "input": {
+      "ledgerId": "orders-api-test",
+      "sequence": 3,
+      "hash": "48434bf4cd1fd8132b1a307928755feaba07eec64a96924507685f82a7010b27",
+      "createdAt": "2026-01-15T10:00:00.000Z",
+      "keyId": "k1"
+    },
+    "expected": {
+      "canonicalBody": "{\"createdAt\":\"2026-01-15T10:00:00.000Z\",\"hash\":\"48434bf4cd1fd8132b1a307928755feaba07eec64a96924507685f82a7010b27\",\"keyId\":\"k1\",\"ledgerId\":\"orders-api-test\",\"sequence\":3,\"type\":\"checkpoint\",\"v\":1}",
+      "digest": "7d8027ee48007818e14b2736644856380b3364a2eb957695fea35a8d823aaddb",
+      "signature": "ec11b7a65666c68a44a137bd7dbf9091e3c25d2b581a4a88465f823b9bb30d59"
+    }
+  }
+}

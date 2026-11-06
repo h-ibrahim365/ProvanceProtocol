@@ -1,98 +1,58 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Provance.AspNetCore.Middleware.Data;
-using Provance.AspNetCore.Middleware.Dtos;
-using Provance.AspNetCore.Middleware.Extensions;
+using Microsoft.EntityFrameworkCore;
+using Provance.Core.Data;
 using Provance.Core.Services.Interfaces;
+using Provance.Core.Verification;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- PROVANCE SETUP ---------------------------------------------------------
-
-// 1. OPTIONAL: Configure MongoDB Storage
-// builder.Services.AddProvanceMongoStorage(builder.Configuration);
-
-// 2. Register Provance Core Services (All-in-One)
-builder.Services.AddProvanceLogging(options =>
-{
-    var provanceConfig = builder.Configuration.GetSection("ProvanceProtocol");
-
-    options.GenesisHash = provanceConfig["GenesisHash"] ?? string.Empty;
-    options.SecretKey = provanceConfig["SecretKey"] ?? string.Empty;
-});
-
-// ----------------------------------------------------------------------------
-
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// PROVANCE: options come from the "Provance" section. Keep Provance:SecretKey out of appsettings.json
+// (user secrets in development, a secret store in production).
+// The ledger goes to a local SQLite file so the example runs without installing anything.
+// Swap UseSqlite for UseNpgsql, UseSqlServer, UseMySql... in a real application.
+builder.Services
+    .AddProvance(builder.Configuration.GetSection("Provance"))
+    .UseEntityFrameworkCore(db => db.UseSqlite(builder.Configuration.GetConnectionString("Audit") ?? "Data Source=provance-example.db"))
+    .AddFileCheckpoints(Path.Combine(builder.Environment.ContentRootPath, "checkpoints"))
+    .AddHttpAuditing(o => o.IncludeClientIp = false);
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+app.UseProvanceAuditing();
+
+// A business endpoint that writes its own, more meaningful audit entry.
+app.MapPost("/orders", async (CreateOrder order, ILedgerService ledger, CancellationToken ct) =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-
-// --- API ENDPOINTS ---
-
-app.MapPost("/api/ledger/add", async (
-    [FromBody] LedgerRequest request,
-    HttpContext httpContext,
-    ILedgerService ledgerService,
-    CancellationToken cancellationToken) =>
-{
-    var userId = httpContext.User.Identity?.IsAuthenticated == true
-        ? (httpContext.User.Identity?.Name ?? "UNKNOWN")
-        : "ANONYMOUS";
-
-    var httpPayload = new HttpContextAuditedPayload
+    var orderId = Guid.NewGuid();
+    await ledger.AddEntryAsync("ORDER_CREATED", new AuditedPayload
     {
-        Description = request.Description,
-        CustomData = request.CustomData,
-        RequestPath = httpContext.Request.Path,
-        HttpMethod = httpContext.Request.Method,
-        UserAgent = httpContext.Request.Headers.UserAgent.ToString(),
-        ClientIpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
-        AuthenticatedUserId = userId,
-        ActorId = userId
-    };
+        ActorId = order.CustomerId,
+        Description = "Order created",
+        Data = new Dictionary<string, object?> { ["orderId"] = orderId, ["amount"] = order.Amount }
+    }, ct);
+    return Results.Created($"/orders/{orderId}", new { orderId });
+});
 
-    var result = await ledgerService.AddEntryAsync(
-        request.EventType,
-        httpPayload,
-        cancellationToken);
+app.MapGet("/ledger/head", async (ILedgerService ledger, CancellationToken ct) =>
+    await ledger.GetHeadAsync(ct) is { } head ? Results.Ok(head) : Results.NotFound());
 
-    return Results.Created($"/api/ledger/entry/{result.Id}", result);
-})
-.WithName("AddLedgerEntry")
-.WithSummary("Adds a new structured transaction to the ledger chain (asynchronously).");
-
-app.MapGet("/api/ledger/last", async (
-    ILedgerService ledgerService,
-    CancellationToken cancellationToken) =>
+app.MapGet("/ledger/verify", async (ILedgerService ledger, CancellationToken ct) =>
 {
-    var lastEntry = await ledgerService.GetLastEntryAsync(cancellationToken);
+    var result = await ledger.VerifyAsync(cancellationToken: ct);
+    return result.IsValid ? Results.Ok(result) : Results.Conflict(result);
+});
 
-    return lastEntry is null
-        ? Results.NotFound("The ledger is empty.")
-        : Results.Ok(lastEntry);
-})
-.WithName("GetLastEntry")
-.WithSummary("Retrieves the last entry in the ledger");
+app.MapPost("/ledger/checkpoint", async (ILedgerService ledger, CancellationToken ct) =>
+    await ledger.CreateCheckpointAsync(ct) is { } checkpoint ? Results.Ok(checkpoint) : Results.NotFound());
 
-app.MapGet("/api/ledger/verify", async (
-    ILedgerService ledgerService,
-    CancellationToken cancellationToken) =>
+app.MapPost("/ledger/verify-with-checkpoint", async (LedgerCheckpoint checkpoint, ILedgerService ledger, CancellationToken ct) =>
 {
-    var (isValid, reason) = await ledgerService.VerifyChainIntegrityAsync(cancellationToken);
-
-    return isValid
-        ? Results.Ok(new { IsValid = true, Message = "Chain integrity successfully verified. All entries are valid." })
-        : Results.Conflict(new { IsValid = false, Message = $"Integrity compromised. Reason: {reason}" });
-})
-.WithName("VerifyChainIntegrity")
-.WithSummary("Verifies if all ledger entries are correctly chained and signed (HMAC).");
+    var result = await ledger.VerifyAsync(new LedgerVerificationOptions { TrustedCheckpoint = checkpoint }, ct);
+    return result.IsValid ? Results.Ok(result) : Results.Conflict(result);
+});
 
 app.Run();
+
+/// <summary>Request body of POST /orders.</summary>
+/// <param name="CustomerId">Customer placing the order.</param>
+/// <param name="Amount">Amount as a string, to keep decimals exact in the ledger.</param>
+internal sealed record CreateOrder(string CustomerId, string Amount);

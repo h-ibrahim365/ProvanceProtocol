@@ -1,0 +1,29 @@
+<Project>
+  <!-- Shared settings for every project in the solution. Package specific settings live in each packable csproj. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+
+    <Authors>H. Id Brahim</Authors>
+    <Copyright>Copyright (c) 2025-2026 Hakim Id Brahim</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/h-ibrahim365/ProvanceProtocol</PackageProjectUrl>
+    <PackageReleaseNotes>See https://github.com/h-ibrahim365/ProvanceProtocol/blob/main/CHANGELOG.md</PackageReleaseNotes>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- Projects are not packable unless they opt in. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+</Project>

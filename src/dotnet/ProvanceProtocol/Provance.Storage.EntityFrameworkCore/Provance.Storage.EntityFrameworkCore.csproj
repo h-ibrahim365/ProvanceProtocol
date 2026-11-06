@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <PackageId>Provance.Storage.EntityFrameworkCore</PackageId>
+    <Title>PROVANCE Entity Framework Core store</Title>
+    <Description>Entity Framework Core store for PROVANCE tamper-evident ledgers: SQL Server, PostgreSQL, SQLite, MySQL, MariaDB, Oracle and any other EF Core provider.</Description>
+    <PackageTags>entity-framework-core;efcore;sqlserver;postgresql;sqlite;mysql;audit;audit-trail;tamper-evident;ledger</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>provanceProtocol.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.10" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <ProjectReference Include="..\Provance.Core\Provance.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Provance.Storage.EntityFrameworkCore.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\..\..\icons\provanceProtocol.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

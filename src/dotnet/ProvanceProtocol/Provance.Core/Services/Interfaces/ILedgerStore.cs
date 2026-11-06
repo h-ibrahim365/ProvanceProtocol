@@ -1,59 +1,39 @@
-﻿using Provance.Core.Data;
+using Provance.Core.Data;
 
 namespace Provance.Core.Services.Interfaces
 {
     /// <summary>
-    /// Defines the contract for persistence operations on the immutable ledger.
-    /// This interface decouples the core protocol logic from the storage technology (SQL/NoSQL/File/etc.).
+    /// Persistence of one ledger. Implementations do not compute hashes; they store what the writer
+    /// sealed and enforce uniqueness, which is what keeps the chain linear when several application
+    /// instances write to the same ledger.
     /// </summary>
     public interface ILedgerStore
     {
-        /// <summary>
-        /// Retrieves the last entry written to the ledger (the current chain head).
-        /// This is required to compute the next entry's <c>PreviousHash</c>.
-        /// </summary>
-        /// <param name="cancellationToken">A token to cancel the operation (e.g., shutdown).</param>
-        /// <returns>A task that returns the last <see cref="LedgerEntry"/>, or <c>null</c> if the ledger is empty.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
-        Task<LedgerEntry?> GetLastEntryAsync(CancellationToken cancellationToken = default);
+        /// <summary>Returns the entry with the highest sequence, or <c>null</c> if the ledger is empty.</summary>
+        Task<LedgerEntry?> GetHeadAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Persists a sealed ledger entry.
-        /// This operation is typically performed by the background consumer (<c>LedgerWriterService</c>).
+        /// Appends entries with contiguous, ascending sequences.
         /// </summary>
-        /// <param name="entry">The sealed entry to save.</param>
-        /// <param name="cancellationToken">A token to cancel the operation (e.g., shutdown).</param>
-        /// <returns>A task representing the completion of the write operation.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="entry"/> is null.</exception>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
-        Task WriteEntryAsync(LedgerEntry entry, CancellationToken cancellationToken = default);
+        /// <remarks>
+        /// <para>Must throw <see cref="Exceptions.LedgerConcurrencyException"/> when an entry with the same
+        /// <see cref="LedgerEntry.Sequence"/> or <see cref="LedgerEntry.Id"/> already exists.</para>
+        /// <para>Entries must be inserted in order. If the call fails midway, a prefix of the batch may be
+        /// persisted: the writer detects that through <see cref="GetByIdAsync"/>.</para>
+        /// </remarks>
+        Task AppendAsync(IReadOnlyList<LedgerEntry> entries, CancellationToken cancellationToken = default);
+
+        /// <summary>Returns the entry with the given id, or <c>null</c>.</summary>
+        Task<LedgerEntry?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+        /// <summary>Streams entries with <c>Sequence &gt;= fromSequence</c> in ascending sequence order.</summary>
+        IAsyncEnumerable<LedgerEntry> ReadAsync(long fromSequence = 1, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Retrieves an entry by its identifier. Mainly used for diagnostics / verification scenarios.
+        /// Removes the payload of an entry (sets <see cref="LedgerEntry.PayloadJson"/> to <c>null</c>) and keeps
+        /// everything else. The chain stays verifiable because only <see cref="LedgerEntry.PayloadHash"/> is signed.
         /// </summary>
-        /// <param name="entryId">The ID of the entry to retrieve.</param>
-        /// <param name="cancellationToken">A token to cancel the operation (e.g., shutdown).</param>
-        /// <returns>A task that returns the <see cref="LedgerEntry"/>, or <c>null</c> if not found.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
-        Task<LedgerEntry?> GetEntryByIdAsync(Guid entryId, CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Retrieves all entries from the ledger in a deterministic order suitable for full chain verification.
-        /// </summary>
-        /// <param name="cancellationToken">A token to cancel the operation (e.g., shutdown).</param>
-        /// <returns>A task that returns an ordered collection of all <see cref="LedgerEntry"/> objects.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
-        Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Attempts to acquire an exclusive, time-bound lease for a named resource, or renew an existing lease held by the same worker.
-        /// This is used to implement the "Single Writer" safety lock.
-        /// </summary>
-        /// <param name="resourceName">The name of the resource to lock (e.g., "ledger_writer_lock_v1").</param>
-        /// <param name="workerId">A unique ID identifying the worker instance attempting the operation (for ownership checking).</param>
-        /// <param name="duration">The duration for which the lease should be acquired or extended.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>A task that returns <c>true</c> if the lease was successfully acquired or renewed; <c>false</c> otherwise (e.g., if another non-expired instance holds the lock).</returns>
-        Task<bool> AcquireOrRenewLeaseAsync(string resourceName, string workerId, TimeSpan duration, CancellationToken cancellationToken = default);
+        /// <returns><c>true</c> if the entry exists.</returns>
+        Task<bool> RedactPayloadAsync(Guid id, CancellationToken cancellationToken = default);
     }
 }
