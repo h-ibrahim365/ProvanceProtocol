@@ -97,12 +97,17 @@ namespace Provance.AspNetCore.Middleware
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "PROVANCE could not record the audit entry for {Method} {Path}.", payload.Method, payload.Path);
+                // Method and path come from the client: line breaks are removed so they cannot forge log lines.
+                _logger.LogError(ex, "PROVANCE could not record the audit entry for {Method} {Path} (trace {TraceId}).",
+                    ForLog(payload.Method), ForLog(payload.Path), ForLog(payload.TraceId));
                 if (allowThrow)
                 {
                     throw;
                 }
             }
         }
+
+        internal static string ForLog(string? value) =>
+            value is null ? string.Empty : value.Replace("\r", string.Empty).Replace("\n", string.Empty);
     }
 }
