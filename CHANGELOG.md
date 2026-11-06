@@ -3,6 +3,28 @@
 All notable changes are listed here. The project follows semantic versioning; while the version is 0.x,
 a minor version may contain breaking changes.
 
+## Python 0.1.0 (in the repository, not published yet)
+
+First Python implementation of ledger format 1, in `src/python`. Python 3.10 or later. Same behavior as the .NET
+and Java 0.1.0 libraries.
+
+* `ProvanceLedger`: append entries (`add_entry`, `add_entry_async`, `submit`), verify, create checkpoints, redact
+  payloads. Background writer with batching, bounded retries, several instances per ledger, resync after an
+  ambiguous failure, drain on close. Refuses to start without a ledger id, a strong key or a store; raises
+  instead of hanging when used after `fork()`.
+* `SqlLedgerStore`: SQLite, PostgreSQL, MySQL, MariaDB and SQL Server through DB-API drivers. Same table, columns
+  and value formats as the .NET Entity Framework Core store and the Java JDBC store.
+* `provance.http`: one entry per HTTP request for ASGI (FastAPI, Starlette), WSGI (Flask) and Django, with the same
+  payload and privacy defaults as the ASP.NET Core middleware and the Spring filter.
+* Payloads: dicts, dataclasses, Pydantic models, `AuditedPayload` and plain objects, serialized like in .NET and
+  Java.
+* Checkpoints: file sink with the .NET and Java layout, custom sinks, automatic publication.
+* `provance verify` and `provance export`: verify a ledger from a database or a JSON Lines export, with current and
+  retired keys and an optional trusted checkpoint. Exit code 0, 1 or 2 for scheduled checks.
+* Canonical JSON from the independent `rfc8785` package. Passes the shared test vectors, verifies a ledger written
+  by the Java library (`docs/test-vectors/ledger-java`), and ledgers written in Python verify and continue in Java.
+  Tested on Python 3.10 to 3.13, with SQLite and PostgreSQL.
+
 ## Java 0.1.0
 
 First Java implementation of ledger format 1, in `src/java`. Java 17 or later.

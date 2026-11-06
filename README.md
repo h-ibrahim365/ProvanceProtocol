@@ -4,7 +4,7 @@
 
 <h1 align="center">PROVANCE</h1>
 
-<p align="center">Tamper-evident audit trail for .NET and Java applications.</p>
+<p align="center">Tamper-evident audit trail for .NET, Java and Python applications.</p>
 
 <p align="center">
   <a href="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml"><img src="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
@@ -24,9 +24,11 @@ Oracle, ...), and verification runs in your application or in a separate audit t
 | :------------- | :------- | :----- |
 | [.NET 8+](src/dotnet/README.md) | `Provance.Core`, `Provance.Storage.EntityFrameworkCore`, `Provance.AspNetCore.Middleware` on NuGet | Released |
 | [Java 17+](src/java/README.md) | `provance-core`, `provance-jdbc`, `provance-spring-boot-starter` on Maven Central (`io.github.h-ibrahim365`) | Released |
+| [Python 3.10+](src/python/README.md) | `provance` on PyPI: ledger, SQL store, FastAPI, Flask and Django integration, `provance verify` command | In this repository, not on PyPI yet |
 
-Both write the same [ledger format](docs/SPEC.md) and pass the same [test vectors](docs/test-vectors/): a
-ledger written in one language can be verified in the other.
+All three follow the same [ledger format](docs/SPEC.md) and pass the same [test vectors](docs/test-vectors/): a
+ledger written in one language can be verified, and continued, in the others. The `provance verify` command of the
+Python package lets an auditor or a security team check any of them without installing .NET or Java.
 
 ## Try it in 2 minutes (.NET)
 
@@ -114,8 +116,10 @@ The setup guides are per language:
 
 * [.NET](src/dotnet/README.md): packages, configuration, databases, business events, verification
 * [Java](src/java/README.md): Spring Boot starter, plain Java, databases, verification
+* [Python](src/python/README.md): ledger, SQL store, FastAPI, Flask and Django integration, `provance verify`
+  from the command line, offline exports
 
-In both, the application refuses to start with a missing ledger id, a short or placeholder key, or no store.
+In all three, the application refuses to start with a missing ledger id, a short or placeholder key, or no store.
 There is no silent fallback to an in-memory store.
 
 ## Several instances
@@ -130,10 +134,11 @@ batched under load. If one ledger becomes a bottleneck, use one ledger per tenan
 
 A ledger is append only, which conflicts with the right to erasure. PROVANCE helps in three ways:
 
-* the HTTP integrations (ASP.NET Core middleware, Spring filter) do not record query strings, IP addresses,
-  user agents or exception messages unless you enable them;
+* the HTTP integrations (ASP.NET Core middleware, Spring filter, Python ASGI, WSGI and Django middleware) do
+  not record query strings, IP addresses, user agents or exception messages unless you enable them;
 * only the payload hash is chained, so a payload can be redacted (`RedactPayloadAsync` in .NET,
-  `redactPayload` in Java) and the ledger still verifies (the entry, its type and its time remain);
+  `redactPayload` in Java, `redact_payload` in Python) and the ledger still verifies (the entry, its type and
+  its time remain);
 * you can keep personal data out of payloads entirely and store a reference instead.
 
 ## Compared with other options
@@ -153,14 +158,15 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 * [Ledger format specification](docs/SPEC.md) and [test vectors](docs/test-vectors/) (with an independent Python checker)
 * [.NET guide](src/dotnet/README.md) and [implementation notes](docs/ARCHITECTURE.md)
 * [Java guide](src/java/README.md)
+* [Python guide](src/python/README.md)
 * [Migration from 0.0.3](docs/MIGRATION.md) (.NET)
 * [Changelog](CHANGELOG.md)
 * [Security policy](SECURITY.md)
 
 ## Status
 
-Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET and Java
-APIs may still change before 1.0.
+Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET, Java and
+Python APIs may still change before 1.0.
 
 ## Roadmap for 0.2
 
@@ -174,9 +180,9 @@ Planned, in no fixed order. Feedback on what matters most to you is welcome in t
 * **ECDSA signer**, so that an auditor can verify a ledger with the public key only.
 * **Querying** entries by actor, event type or period, with the matching indexes.
 * **Health checks and metrics** (OpenTelemetry).
-* **A command line tool** to verify a ledger without writing code.
 * **MongoDB in the .NET test suite.**
-* **A cross-language test** that reads a ledger written by the other implementation.
+* **Cross-language tests in every suite**: the Python suite already verifies a ledger written by Java
+  ([fixture](docs/test-vectors/ledger-java/)); the .NET and Java suites will read it too.
 
 ## License
 

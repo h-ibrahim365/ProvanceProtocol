@@ -1,7 +1,7 @@
 # PROVANCE ledger format, version 1
 
 This document defines the bytes that PROVANCE hashes and signs. Any implementation that follows it
-produces the same hashes as the .NET and Java libraries. The file `docs/test-vectors/v1.json` contains reference
+produces the same hashes as the .NET, Java and Python libraries. The file `docs/test-vectors/v1.json` contains reference
 values, and `docs/test-vectors/verify.py` recomputes them without any .NET code.
 
 The format version (`v = 1`) is independent from the package version. Package 0.1.0 is the first to write format 1.
