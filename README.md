@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml"><img src="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.nuget.org/packages/Provance.Core"><img src="https://img.shields.io/nuget/v/Provance.Core.svg?label=Provance.Core" alt="Provance.Core on NuGet" /></a>
+  <a href="https://central.sonatype.com/artifact/io.github.h-ibrahim365/provance-core"><img src="https://img.shields.io/maven-central/v/io.github.h-ibrahim365/provance-core.svg?label=provance-core" alt="provance-core on Maven Central" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license" /></a>
 </p>
 
@@ -22,7 +23,7 @@ Oracle, ...), and verification runs in your application or in a separate audit t
 | Implementation | Packages | Status |
 | :------------- | :------- | :----- |
 | [.NET 8+](src/dotnet/README.md) | `Provance.Core`, `Provance.Storage.EntityFrameworkCore`, `Provance.AspNetCore.Middleware` on NuGet | Released |
-| [Java 17+](src/java/README.md) | `provance-core`, `provance-jdbc`, `provance-spring-boot-starter` | In this repository, not on Maven Central yet |
+| [Java 17+](src/java/README.md) | `provance-core`, `provance-jdbc`, `provance-spring-boot-starter` on Maven Central (`io.github.h-ibrahim365`) | Released |
 
 Both write the same [ledger format](docs/SPEC.md) and pass the same [test vectors](docs/test-vectors/): a
 ledger written in one language can be verified in the other.
@@ -159,7 +160,7 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 ## Status
 
 Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET and Java
-APIs may still change before 1.0. The Java modules are tested in CI but not published yet.
+APIs may still change before 1.0.
 
 ## Roadmap for 0.2
 
@@ -175,7 +176,7 @@ Planned, in no fixed order. Feedback on what matters most to you is welcome in t
 * **Health checks and metrics** (OpenTelemetry).
 * **A command line tool** to verify a ledger without writing code.
 * **MongoDB in the .NET test suite.**
-* **Java on Maven Central**, and a test that reads a ledger written by the other implementation.
+* **A cross-language test** that reads a ledger written by the other implementation.
 
 ## License
 

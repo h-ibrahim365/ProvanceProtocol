@@ -12,8 +12,7 @@ Requires Java 17 or later. Works with Kotlin too.
 | `provance-jdbc` | Store for PostgreSQL, SQL Server, MySQL, MariaDB, Oracle, SQLite, H2 and other JDBC databases. |
 | `provance-spring-boot-starter` | Spring Boot 4 auto-configuration and an optional HTTP audit filter. |
 
-Status: version 0.1.0 is in this repository and tested in CI. It is not published on Maven Central yet; until then,
-build it with `mvn install` (see the end of this page).
+Published on Maven Central under `io.github.h-ibrahim365`.
 
 ## Spring Boot
 
@@ -23,6 +22,12 @@ build it with `mvn install` (see the end of this page).
     <artifactId>provance-spring-boot-starter</artifactId>
     <version>0.1.0</version>
 </dependency>
+```
+
+With Gradle:
+
+```kotlin
+implementation("io.github.h-ibrahim365:provance-spring-boot-starter:0.1.0")
 ```
 
 `application.properties` (no secret here):
@@ -177,7 +182,7 @@ KMS so the application never sees it.
 ```bash
 cd src/java
 mvn verify            # tests; PostgreSQL, SQL Server and MySQL tests need Docker and are skipped without it
-mvn install           # installs 0.1.0 in your local Maven repository
+mvn install           # installs the current version in your local Maven repository
 ```
 
 ## Publishing to Maven Central (maintainers)
