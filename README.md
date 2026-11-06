@@ -263,7 +263,20 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET API may
 still change before 1.0.
 
-Planned next: health checks and metrics, a PostgreSQL store, a KMS signer example, a verification command line tool.
+## Roadmap for 0.2
+
+Planned, in no fixed order. Feedback on what matters most to you is welcome in the issues.
+
+* **Several ledgers in one application**, for example one per tenant, or one for audit and one for billing
+  (`AddProvance("billing", ...)` with .NET keyed services).
+* **Asynchronous mirror to a second store**, for example a database owned by another team. Each entry
+  verifies on its own, so the copy can be checked independently, and comparing the two copies reveals an
+  edit made in either one.
+* **ECDSA signer**, so that an auditor can verify a ledger with the public key only.
+* **Querying** entries by actor, event type or period, with the matching indexes.
+* **Health checks and metrics** (OpenTelemetry).
+* **A command line tool** to verify a ledger without writing code.
+* **MongoDB in the test suite.**
 
 ## License
 
