@@ -25,6 +25,13 @@ namespace Provance.AspNetCore.Middleware.Tests
             return context;
         }
 
+        [Fact]
+        public void Client_values_are_logged_without_line_breaks()
+        {
+            Assert.Equal("/api/x fake entry", ProvanceAuditMiddleware.ForLog("/api/x\r\n fake entry"));
+            Assert.Equal(string.Empty, ProvanceAuditMiddleware.ForLog(null));
+        }
+
         private static ProvanceAuditMiddleware Middleware(RequestDelegate next, Action<HttpAuditOptions>? configure = null)
         {
             var options = new HttpAuditOptions();

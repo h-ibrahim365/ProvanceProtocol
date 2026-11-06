@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   SOLUTION: src/dotnet/ProvanceProtocol/ProvanceProtocol.sln
@@ -50,7 +51,13 @@ jobs:
             dotnet pack "src/dotnet/ProvanceProtocol/$project/$project.csproj" -c Release --no-build --output nupkg
           done
 
+      - name: NuGet login (Trusted Publishing)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: HakimBuilds
+
       - name: Push to NuGet
         run: dotnet nuget push "nupkg/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
