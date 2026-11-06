@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "provance"
+version = "0.1.0"
+description = "Tamper-evident audit trail: hash chained, signed ledger in your own database, with FastAPI, Flask and Django integration. Same format as the .NET and Java libraries."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Hakim Id Brahim" }]
+keywords = ["audit", "audit-trail", "audit-log", "tamper-evident", "ledger", "hash-chain", "rfc8785", "compliance", "gdpr", "fastapi", "django", "flask"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Database",
+    "Framework :: FastAPI",
+    "Framework :: Django",
+    "Framework :: Flask",
+    "Typing :: Typed",
+]
+dependencies = ["rfc8785>=0.1.4"]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+mysql = ["PyMySQL>=1.1"]
+sqlserver = ["pymssql>=2.3"]
+test = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://github.com/h-ibrahim365/ProvanceProtocol"
+Documentation = "https://github.com/h-ibrahim365/ProvanceProtocol/blob/main/src/python/README.md"
+Specification = "https://github.com/h-ibrahim365/ProvanceProtocol/blob/main/docs/SPEC.md"
+Changelog = "https://github.com/h-ibrahim365/ProvanceProtocol/blob/main/CHANGELOG.md"
+Issues = "https://github.com/h-ibrahim365/ProvanceProtocol/issues"
+
+[project.scripts]
+provance = "provance.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/provance"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/provance", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

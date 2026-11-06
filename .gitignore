@@ -71,3 +71,10 @@ src/dotnet/ProvanceProtocol/Provance.Example.Api/checkpoints/
 
 # Java build outputs
 src/java/**/target/
+
+# Python build outputs
+src/python/dist/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.venv/

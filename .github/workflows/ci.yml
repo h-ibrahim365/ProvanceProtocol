@@ -84,3 +84,43 @@ jobs:
         with:
           name: java-${{ matrix.java }}-surefire-reports
           path: src/java/**/target/surefire-reports
+
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: provance
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: src/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: pip install -e ".[test,postgres]"
+
+      - name: Test (SQLite, PostgreSQL, shared vectors, Java ledger fixture)
+        run: pytest
+        env:
+          PROVANCE_TEST_POSTGRES_URL: postgresql://postgres:provance@localhost:5432/postgres
+
+      - name: Build the distribution
+        if: matrix.python == '3.13'
+        run: |
+          pip install build twine
+          python -m build
+          twine check --strict dist/*
+
