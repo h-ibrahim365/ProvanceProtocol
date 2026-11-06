@@ -3,7 +3,7 @@
 All notable changes are listed here. The project follows semantic versioning; while the version is 0.x,
 a minor version may contain breaking changes.
 
-## Java 0.1.0 (in the repository, not published yet)
+## Java 0.1.0
 
 First Java implementation of ledger format 1, in `src/java`. Java 17 or later.
 
