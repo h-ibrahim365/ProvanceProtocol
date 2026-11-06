@@ -102,6 +102,8 @@ export const VERSIONS: Version[] = [
     changes: [
       "Public key signatures (ECDSA), so auditors verify without being able to sign",
       "Several ledgers in one application",
+      "A copy of every entry in a second database, such as an archive",
+      "A comparison that shows which field was changed and its original value",
       "Checkpoints sent to immutable storage and timestamping services",
     ],
     steps: STEPS_V1,
