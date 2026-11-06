@@ -4,7 +4,7 @@
 
 <h1 align="center">PROVANCE</h1>
 
-<p align="center">Tamper-evident audit trail for .NET applications.</p>
+<p align="center">Tamper-evident audit trail for .NET and Java applications.</p>
 
 <p align="center">
   <a href="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml"><img src="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
@@ -16,11 +16,18 @@ PROVANCE records application events (who did what, when) in an append only ledge
 is chained to the previous one with SHA-256 and signed. If someone edits, deletes or reorders entries
 directly in the database, verification tells you exactly where.
 
-It is a library, not a service: entries live in your own database (SQL Server, PostgreSQL, SQLite,
-MySQL, Oracle, ... through Entity Framework Core, or any store you implement), and verification runs
-in your application or in a separate audit tool.
+It is a library, not a service: entries live in your own database (PostgreSQL, SQL Server, MySQL, SQLite,
+Oracle, ...), and verification runs in your application or in a separate audit tool.
 
-## Try it in 2 minutes
+| Implementation | Packages | Status |
+| :------------- | :------- | :----- |
+| [.NET 8+](src/dotnet/README.md) | `Provance.Core`, `Provance.Storage.EntityFrameworkCore`, `Provance.AspNetCore.Middleware` on NuGet | Released |
+| [Java 17+](src/java/README.md) | `provance-core`, `provance-jdbc`, `provance-spring-boot-starter` | In this repository, not on Maven Central yet |
+
+Both write the same [ledger format](docs/SPEC.md) and pass the same [test vectors](docs/test-vectors/): a
+ledger written in one language can be verified in the other.
+
+## Try it in 2 minutes (.NET)
 
 ```bash
 dotnet new web -n AuditDemo && cd AuditDemo
@@ -64,7 +71,8 @@ sqlite3 audit.db "UPDATE provance_ledger SET event_type = 'ROLE_REVOKED' WHERE s
 curl http://localhost:5000/verify      # "isValid": false, "failedAtSequence": 1
 ```
 
-The table is created on first use. Any SQLite tool works in place of `sqlite3`.
+The table is created on first use. Any SQLite tool works in place of `sqlite3`. For Java and Spring Boot, see
+the [Java README](src/java/README.md).
 
 ## Why
 
@@ -99,126 +107,15 @@ automatically; where they go is your decision.
 The default signature is HMAC-SHA256. Whoever has the key can sign, so keep it in a secret store and
 restrict who can read it, or plug in a signer backed by your KMS so the application never sees the key.
 
-## Setting it up in your application
+## Using it
 
-Three packages:
+The setup guides are per language:
 
-| Package | Use |
-| :------ | :-- |
-| [`Provance.Core`](https://www.nuget.org/packages/Provance.Core) | Ledger, verification, checkpoints. Works in any .NET 8+ host. |
-| [`Provance.Storage.EntityFrameworkCore`](https://www.nuget.org/packages/Provance.Storage.EntityFrameworkCore) | Store for any database with an EF Core provider. |
-| [`Provance.AspNetCore.Middleware`](https://www.nuget.org/packages/Provance.AspNetCore.Middleware) | One audit entry per HTTP request. |
+* [.NET](src/dotnet/README.md): packages, configuration, databases, business events, verification
+* [Java](src/java/README.md): Spring Boot starter, plain Java, databases, verification
 
-```bash
-dotnet add package Provance.Core
-dotnet add package Provance.Storage.EntityFrameworkCore
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL   # or the EF Core provider of your database
-dotnet add package Provance.AspNetCore.Middleware
-```
-
-`appsettings.json` (no secret here):
-
-```json
-{
-  "Provance": {
-    "LedgerId": "orders-api-prod",
-    "SigningKeyId": "k1"
-  },
-  "ConnectionStrings": {
-    "Audit": "Host=localhost;Database=audit;Username=app"
-  }
-}
-```
-
-The key comes from a secret store or an environment variable, at least 32 bytes:
-
-```bash
-# development
-dotnet user-secrets set "Provance:SecretKey" "$(openssl rand -base64 48)"
-# production: environment variable Provance__SecretKey, Key Vault, etc.
-```
-
-`Program.cs`:
-
-```csharp
-builder.Services
-    .AddProvance(builder.Configuration.GetSection("Provance"))
-    .UseEntityFrameworkCore(db => db.UseNpgsql(builder.Configuration.GetConnectionString("Audit")))
-    .AddHttpAuditing();          // optional: one entry per HTTP request
-
-var app = builder.Build();
-
-app.UseAuthentication();
-app.UseProvanceAuditing();       // after authentication, so the actor is known
-```
-
-The application refuses to start with a missing ledger id, a short key or a placeholder key, and there is
-no silent fallback to an in-memory store.
-
-## Databases
-
-| Database | How | Tested in CI |
-| :------- | :-- | :----------- |
-| PostgreSQL | `db.UseNpgsql(...)` | Yes |
-| SQL Server, Azure SQL | `db.UseSqlServer(...)` | Yes |
-| SQLite | `db.UseSqlite(...)` | Yes |
-| MySQL, MariaDB | `db.UseMySql(...)` (Pomelo provider) | No, same code path |
-| Oracle | `db.UseOracle(...)` | No, same code path |
-| MongoDB | `MongoDB.EntityFrameworkCore` provider, with your own context | No, see the [store README](src/dotnet/ProvanceProtocol/Provance.Storage.EntityFrameworkCore/README.md) |
-| Anything else | implement `ILedgerStore` (5 methods) | Contract in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-
-The ledger can have a table of its own, created on first use, or live in your own `DbContext` with
-`modelBuilder.AddProvanceLedger()` and your migrations.
-
-## Recording business events
-
-The HTTP middleware tells you that `POST /orders` returned 201. Most audits need more than that:
-
-```csharp
-app.MapPost("/orders/{id}/refund", async (Guid id, RefundRequest request, ILedgerService ledger, ClaimsPrincipal user) =>
-{
-    await ledger.AddEntryAsync("ORDER_REFUNDED", new AuditedPayload
-    {
-        ActorId = user.FindFirstValue(ClaimTypes.NameIdentifier),
-        Description = "Refund issued",
-        Data = new Dictionary<string, object?> { ["orderId"] = id, ["amount"] = request.Amount }
-    });
-
-    // ... do the refund
-});
-```
-
-Any serializable object can be a payload, and its runtime type is used, so derived types are fully signed.
-Write money amounts and large numbers as strings: payloads are canonicalized with RFC 8785, which treats
-numbers as doubles.
-
-`AddEntryAsync` returns once the entry is stored. Call it before the operation if the operation must not
-happen without an audit trace.
-
-## Verifying
-
-```csharp
-var result = await ledger.VerifyAsync();
-// result.IsValid, result.Failure, result.FailedAtSequence, result.LastSequence, result.LastHash
-```
-
-With a checkpoint obtained from your trusted storage:
-
-```csharp
-var checkpoint = LedgerCheckpoint.FromJson(jsonFromTrustedStorage);
-var result = await ledger.VerifyAsync(new LedgerVerificationOptions { TrustedCheckpoint = checkpoint });
-```
-
-Automatic checkpoints:
-
-```csharp
-builder.Services.AddProvance(...)
-    .UseEntityFrameworkCore(...)
-    .AddFileCheckpoints("/mnt/immutable/provance");   // or AddCheckpointSink(yourSink)
-```
-
-`LedgerVerifier` can also be used on its own, for example in a command line tool run by an auditor with
-read access to the database and the verification key.
+In both, the application refuses to start with a missing ledger id, a short or placeholder key, or no store.
+There is no silent fallback to an in-memory store.
 
 ## Several instances
 
@@ -232,10 +129,10 @@ batched under load. If one ledger becomes a bottleneck, use one ledger per tenan
 
 A ledger is append only, which conflicts with the right to erasure. PROVANCE helps in three ways:
 
-* the HTTP middleware does not record query strings, IP addresses, user agents or exception messages
-  unless you enable them;
-* only the payload hash is chained, so `RedactPayloadAsync(id)` can delete a payload and the ledger still
-  verifies (the entry, its type and its time remain);
+* the HTTP integrations (ASP.NET Core middleware, Spring filter) do not record query strings, IP addresses,
+  user agents or exception messages unless you enable them;
+* only the payload hash is chained, so a payload can be redacted (`RedactPayloadAsync` in .NET,
+  `redactPayload` in Java) and the ledger still verifies (the entry, its type and its time remain);
 * you can keep personal data out of payloads entirely and store a reference instead.
 
 ## Compared with other options
@@ -253,22 +150,23 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 ## Documentation
 
 * [Ledger format specification](docs/SPEC.md) and [test vectors](docs/test-vectors/) (with an independent Python checker)
-* [.NET implementation notes](docs/ARCHITECTURE.md)
-* [Migration from 0.0.3](docs/MIGRATION.md)
+* [.NET guide](src/dotnet/README.md) and [implementation notes](docs/ARCHITECTURE.md)
+* [Java guide](src/java/README.md)
+* [Migration from 0.0.3](docs/MIGRATION.md) (.NET)
 * [Changelog](CHANGELOG.md)
 * [Security policy](SECURITY.md)
 
 ## Status
 
-Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET API may
-still change before 1.0.
+Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET and Java
+APIs may still change before 1.0. The Java modules are tested in CI but not published yet.
 
 ## Roadmap for 0.2
 
 Planned, in no fixed order. Feedback on what matters most to you is welcome in the issues.
 
 * **Several ledgers in one application**, for example one per tenant, or one for audit and one for billing
-  (`AddProvance("billing", ...)` with .NET keyed services).
+  (keyed services in .NET, named beans in Spring).
 * **Asynchronous mirror to a second store**, for example a database owned by another team. Each entry
   verifies on its own, so the copy can be checked independently, and comparing the two copies reveals an
   edit made in either one.
@@ -276,7 +174,8 @@ Planned, in no fixed order. Feedback on what matters most to you is welcome in t
 * **Querying** entries by actor, event type or period, with the matching indexes.
 * **Health checks and metrics** (OpenTelemetry).
 * **A command line tool** to verify a ledger without writing code.
-* **MongoDB in the test suite.**
+* **MongoDB in the .NET test suite.**
+* **Java on Maven Central**, and a test that reads a ledger written by the other implementation.
 
 ## License
 

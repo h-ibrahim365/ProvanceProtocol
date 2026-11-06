@@ -1,13 +1,14 @@
 name: Release
 
-# Publishing a GitHub release tagged vX.Y.Z builds, tests and pushes the three packages to NuGet.
+# Publishing a GitHub release tagged vX.Y.Z builds, tests and pushes the three packages to NuGet
+# (Trusted Publishing: no API key stored in the repository).
 on:
   release:
     types: [published]
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write   # lets the job get a short-lived NuGet key through Trusted Publishing
 
 env:
   SOLUTION: src/dotnet/ProvanceProtocol/ProvanceProtocol.sln
@@ -16,6 +17,7 @@ env:
 
 jobs:
   publish:
+    if: startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

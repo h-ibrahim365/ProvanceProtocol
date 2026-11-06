@@ -3,6 +3,19 @@
 All notable changes are listed here. The project follows semantic versioning; while the version is 0.x,
 a minor version may contain breaking changes.
 
+## Java 0.1.0 (in the repository, not published yet)
+
+First Java implementation of ledger format 1, in `src/java`. Java 17 or later.
+
+* `provance-core`: ledger, writer, verification, checkpoints, HMAC signer, RFC 8785 canonicalization. No
+  dependencies. Same behavior as the .NET 0.1.0 core: several instances per ledger, resync after an ambiguous
+  failure, batching, bounded retries, drain on close.
+* `provance-jdbc`: store for PostgreSQL, SQL Server, MySQL, MariaDB, Oracle, SQLite, H2 and generic SQL. Same table
+  and column names as the .NET Entity Framework Core store.
+* `provance-spring-boot-starter`: Spring Boot 4 auto-configuration from `provance.*` properties and an optional HTTP
+  audit filter with the same privacy defaults as the ASP.NET Core middleware.
+* Passes the shared test vectors. Tested in CI on PostgreSQL, SQL Server, MySQL, H2 and SQLite.
+
 ## 0.1.0
 
 First release of ledger format 1. Not compatible with ledgers written by 0.0.x, see [docs/MIGRATION.md](docs/MIGRATION.md).
