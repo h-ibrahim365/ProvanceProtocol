@@ -1,0 +1,58 @@
+{
+ "info": {
+  "name": "provance",
+  "version": "0.1.0",
+  "project_url": "https://pypi.org/project/provance/",
+  "package_url": "https://pypi.org/project/provance/"
+ },
+ "releases": {
+  "0.1.0": [
+   {
+    "comment_text": null,
+    "core-metadata": {
+     "sha256": "92932995519f534fba52606a6167aaab42c8f823e7b9432b033895e75ac4458c"
+    },
+    "digests": {
+     "blake2b_256": "21c6a941483bfea0de3f68ebba61b07fccf9fe90e210740b94536b90369f88dc",
+     "md5": "184679e29b22390adc2350d346f896c1",
+     "sha256": "17f7e4562f50450e3cadd2012c8f72425bdbc94a87ad31d1847d36ab713c6ea7"
+    },
+    "downloads": -1,
+    "filename": "provance-0.1.0-py3-none-any.whl",
+    "has_sig": false,
+    "md5_digest": "184679e29b22390adc2350d346f896c1",
+    "packagetype": "bdist_wheel",
+    "python_version": "py3",
+    "requires_python": ">=3.10",
+    "size": 43346,
+    "upload_time": "2026-11-06T22:29:12",
+    "upload_time_iso_8601": "2026-11-06T22:29:12.303783Z",
+    "url": "https://files.pythonhosted.org/packages/21/c6/a941483bfea0de3f68ebba61b07fccf9fe90e210740b94536b90369f88dc/provance-0.1.0-py3-none-any.whl",
+    "yanked": false,
+    "yanked_reason": null
+   },
+   {
+    "comment_text": null,
+    "core-metadata": false,
+    "digests": {
+     "blake2b_256": "6f76f10c8cb55fb4d044ed6fcb3f96f82cb1b5a28a4be05938c0aa71d6da6e4c",
+     "md5": "9aad2f3af82f5a90bdd3a334a2494a26",
+     "sha256": "8e0fbfefa6b1ec04d0118d43f35d554889db9e75e1b2ee0b27d8195ab89a1e31"
+    },
+    "downloads": -1,
+    "filename": "provance-0.1.0.tar.gz",
+    "has_sig": false,
+    "md5_digest": "9aad2f3af82f5a90bdd3a334a2494a26",
+    "packagetype": "sdist",
+    "python_version": "source",
+    "requires_python": ">=3.10",
+    "size": 48325,
+    "upload_time": "2026-11-06T22:29:13",
+    "upload_time_iso_8601": "2026-11-06T22:29:13.663652Z",
+    "url": "https://files.pythonhosted.org/packages/6f/76/f10c8cb55fb4d044ed6fcb3f96f82cb1b5a28a4be05938c0aa71d6da6e4c/provance-0.1.0.tar.gz",
+    "yanked": false,
+    "yanked_reason": null
+   }
+  ]
+ }
+}
