@@ -55,3 +55,32 @@ jobs:
         run: |
           pip install rfc8785==0.1.4
           python docs/test-vectors/verify.py
+
+  java:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["17", "21"]
+    defaults:
+      run:
+        working-directory: src/java
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      # PostgreSQL, SQL Server and MySQL tests start containers through Testcontainers. H2 and SQLite need nothing.
+      - name: Build and test
+        run: mvn -B -ntp verify
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-${{ matrix.java }}-surefire-reports
+          path: src/java/**/target/surefire-reports

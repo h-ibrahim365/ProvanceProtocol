@@ -68,3 +68,6 @@ src/dotnet/ProvanceProtocol/Provance.Example.Api/checkpoints/
 *.db
 *.db-wal
 *.db-shm
+
+# Java build outputs
+src/java/**/target/

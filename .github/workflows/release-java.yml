@@ -1,0 +1,48 @@
+name: Release (Java)
+
+# Publishing a GitHub release tagged java-vX.Y.Z builds, tests, signs and uploads the Java modules to Maven Central.
+# Needs the secrets MAVEN_CENTRAL_USERNAME and MAVEN_CENTRAL_PASSWORD (a Central Portal user token),
+# MAVEN_GPG_PRIVATE_KEY and MAVEN_GPG_PASSPHRASE. See src/java/README.md.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: startsWith(github.event.release.tag_name, 'java-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/java
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+
+      - name: Check that the tag matches the POM version
+        run: |
+          TAG="${GITHUB_REF_NAME#java-v}"
+          POM=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+          echo "tag=$TAG pom=$POM"
+          if [ "$TAG" != "$POM" ]; then
+            echo "::error::Release tag java-v$TAG does not match <version>$POM</version> in src/java/pom.xml"
+            exit 1
+          fi
+
+      - name: Build, test, sign and publish
+        run: mvn -B -ntp -P release deploy
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
