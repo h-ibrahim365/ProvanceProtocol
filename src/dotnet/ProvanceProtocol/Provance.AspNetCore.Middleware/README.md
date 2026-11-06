@@ -1,51 +1,31 @@
-<!-- Provance.AspNetCore.Middleware README (v0.0.3) -->
-<p align="center">
-  <img src="provanceMiddleWare.png" alt="PROVANCE Middleware logo" width="120" />
-</p>
-
 # Provance.AspNetCore.Middleware
 
-ASP.NET Core middleware + DI helpers for integrating PROVANCE tamper-evident audit trails into the request pipeline.
-
-- NuGet: `Provance.AspNetCore.Middleware`
-
-## Install
+Records one PROVANCE ledger entry per HTTP request: method, path, status code, outcome, duration,
+trace id, actor id and exception type.
 
 ```bash
 dotnet add package Provance.AspNetCore.Middleware
-# recommended storage
-dotnet add package Provance.Storage.MongoDB
 ```
-
-## Setup (Minimal API)
 
 ```csharp
-using Provance.AspNetCore.Middleware.Extensions;
-using Provance.Storage.MongoDB.Extensions;
+builder.Services
+    .AddProvance(builder.Configuration.GetSection("Provance"))
+    .UseEntityFrameworkCore(db => db.UseNpgsql(builder.Configuration.GetConnectionString("Audit")))
+    .AddHttpAuditing(o =>
+    {
+        o.FailureMode = HttpAuditFailureMode.LogAndContinue;  // or Throw
+        o.IncludeClientIp = false;                            // personal data, off by default
+    });
 
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddProvanceMongoStorage(builder.Configuration);
-
-builder.Services.AddProvanceLogging(options =>
-{
-    var cfg = builder.Configuration.GetSection("ProvanceProtocol");
-    options.GenesisHash = cfg["GenesisHash"] ?? string.Empty;
-    options.SecretKey = cfg["SecretKey"] ?? string.Empty;
-});
-
-var app = builder.Build();
-
-app.UseProvanceLogger();
-
-app.Run();
+app.UseAuthentication();
+app.UseProvanceAuditing();
 ```
 
-## Notes
+Query strings, IP addresses and user agents are off by default; exception messages are never recorded.
+`/health`, `/healthz`, `/metrics` and `/favicon.ico` are excluded. The wait for the ledger is bounded by
+`AuditTimeout` (5 s).
 
-- v0.0.3 acknowledges requests only after the Single Writer has persisted the entry (strong correctness, higher latency).
-- v0.0.4 will introduce durable outbox + overload policies.
+The entry is written after the endpoint ran. For operations that must not happen without an audit trace,
+call `ILedgerService.AddEntryAsync` in the endpoint before doing the work.
 
-## License
-
-MIT
+Documentation: https://github.com/h-ibrahim365/ProvanceProtocol

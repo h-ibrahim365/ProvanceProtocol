@@ -1,117 +1,62 @@
 ﻿using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
-using Microsoft.Extensions.Options;
-using Provance.Benchmarks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Provance.Core.Canonicalization;
 using Provance.Core.Data;
-using Provance.Core.Options;
-using Provance.Core.Services;
 using Provance.Core.Services.Interfaces;
 
-// This line initiates the benchmark runner
-BenchmarkRunner.Run<ProvanceLoadTest>();
+BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 
 namespace Provance.Benchmarks
 {
-    // --- THE BENCHMARK CLASS ---
-    [MemoryDiagnoser] // Measures memory allocation (RAM usage)
-    public class ProvanceLoadTest
+    /// <summary>End-to-end append cost with the in-memory store (sealing, signing, queueing; no I/O).</summary>
+    [MemoryDiagnoser]
+    public class AppendBenchmarks
     {
-        private LedgerService _ledgerService = null!;
-        private AuditedPayload _payload = null!;
+        private ServiceProvider _provider = null!;
+        private List<IHostedService> _hosted = null!;
+        private ILedgerService _ledger = null!;
+        private readonly AuditedPayload _payload = new() { ActorId = "bench", Description = "benchmark entry" };
 
-        // GlobalSetup runs once before the benchmarks
         [GlobalSetup]
-        public void Setup()
+        public async Task Setup()
         {
-            // 1. Configure Protocol Options
-            var options = Options.Create(new ProvanceOptions
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddProvance(o =>
             {
-                GenesisHash = "0000000000000000000000000000000000000000000000000000000000000000",
-                SecretKey = "BENCHMARK_SECRET_KEY_123456789"
-            });
-
-            // 2. Use In-Memory Store Mock
-            var store = new InMemoryLedgerStore();
-
-            // 3. Initialize the Queue
-            var queue = new EntryQueue();
-
-            // In a real app, LedgerWriterService does this. 
-            // Here, we must manually drain the queue to prevent it from filling up (100k limit).
-            // If we don't do this, the benchmark will hang indefinitely due to Backpressure (Wait mode).
-            Task.Run(async () =>
-            {
-                try
-                {
-                    // Continuously read and discard items to simulate a healthy storage layer
-                    while (await queue.Reader.WaitToReadAsync())
-                    {
-                        while (queue.Reader.TryRead(out var _))
-                        {
-                            // Item consumed (simulating write to DB)
-                        }
-                    }
-                }
-                catch
-                {
-                    // Ignore cancellation during benchmark teardown
-                }
-            });
-
-            // 4. Initialize the Ledger Service
-            _ledgerService = new LedgerService(options, store, queue);
-
-            // 5. Pre-allocate payload
-            _payload = new AuditedPayload
-            {
-                ActorId = "Benchmarker",
-                Description = "Stress Test"
-            };
+                o.LedgerId = "benchmarks";
+                o.SecretKey = "benchmark-secret-key-0123456789abcdef";
+                o.QueueCapacity = 100_000;
+            }).UseInMemoryStore();
+            _provider = services.BuildServiceProvider();
+            _hosted = _provider.GetServices<IHostedService>().ToList();
+            foreach (var service in _hosted) await service.StartAsync(CancellationToken.None);
+            _ledger = _provider.GetRequiredService<ILedgerService>();
         }
 
-        // SCENARIO 1: Pure latency
-        [Benchmark]
-        public async Task Single_Write()
+        [GlobalCleanup]
+        public async Task Cleanup()
         {
-            await _ledgerService.AddEntryAsync("BENCH_EVENT", _payload);
+            foreach (var service in _hosted) await service.StopAsync(CancellationToken.None);
+            await _provider.DisposeAsync();
         }
 
-        // SCENARIO 2: Heavy Load (1000 concurrent)
-        [Benchmark]
-        public async Task HeavyLoad_Burst_1000()
-        {
-            var tasks = new Task[1000];
+        [Benchmark(Description = "1 append, awaited")]
+        public Task<LedgerEntry> SingleAppend() => _ledger.AddEntryAsync("BENCH", _payload);
 
-            for (int i = 0; i < 1000; i++)
-            {
-                tasks[i] = _ledgerService.AddEntryAsync("BURST_EVENT", _payload);
-            }
-
-            await Task.WhenAll(tasks);
-        }
+        [Benchmark(Description = "1000 concurrent appends", OperationsPerInvoke = 1000)]
+        public Task Burst1000() => Task.WhenAll(Enumerable.Range(0, 1000).Select(_ => _ledger.AddEntryAsync("BENCH", _payload)));
     }
 
-    // Minimalist In-Memory Store Mock
-    public class InMemoryLedgerStore : ILedgerStore
+    /// <summary>Cost of RFC 8785 canonicalization for a typical payload.</summary>
+    [MemoryDiagnoser]
+    public class CanonicalizationBenchmarks
     {
-        /// <inheritdoc />
-        public Task WriteEntryAsync(LedgerEntry entry, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        private readonly string _json = """{"orderId":"A-1001","amount":"49.90","items":[{"sku":"X1","qty":2},{"sku":"Y7","qty":1}],"customer":{"id":"c-42","country":"BE"},"ratio":0.3333333333333333}""";
 
-        /// <inheritdoc />
-        public Task<LedgerEntry?> GetLastEntryAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<LedgerEntry?>(null);
-
-        /// <inheritdoc />
-        public Task<LedgerEntry?> GetEntryByIdAsync(Guid entryId, CancellationToken cancellationToken = default)
-            => Task.FromResult<LedgerEntry?>(null);
-
-        /// <inheritdoc />
-        public Task<IEnumerable<LedgerEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<IEnumerable<LedgerEntry>>([]);
-
-        /// <inheritdoc />
-        public Task<bool> AcquireOrRenewLeaseAsync(string resource, string workerId, TimeSpan duration, CancellationToken cancellationToken = default)
-            => Task.FromResult(true);
+        [Benchmark]
+        public string Canonicalize() => JsonCanonicalizer.Canonicalize(_json);
     }
 }

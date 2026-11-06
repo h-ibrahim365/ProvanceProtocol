@@ -1,21 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Provance.Example.Api</RootNamespace>
+    <UserSecretsId>provance-example-api</UserSecretsId>
+  </PropertyGroup>
 
-	<PropertyGroup>
-		<TargetFramework>net8.0</TargetFramework>
-		<Nullable>enable</Nullable>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<RootNamespace>Provance.Example.Api</RootNamespace>
-		<EnableSdkContainerSupport>true</EnableSdkContainerSupport>
-	</PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.10" />
+  </ItemGroup>
 
-	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <ProjectReference Include="..\Provance.AspNetCore.Middleware\Provance.AspNetCore.Middleware.csproj" />
-	  <ProjectReference Include="..\Provance.Storage.MongoDB\Provance.Storage.MongoDB.csproj" />
-	</ItemGroup>
-
+  <ItemGroup>
+    <ProjectReference Include="..\Provance.AspNetCore.Middleware\Provance.AspNetCore.Middleware.csproj" />
+    <ProjectReference Include="..\Provance.Storage.EntityFrameworkCore\Provance.Storage.EntityFrameworkCore.csproj" />
+  </ItemGroup>
 </Project>

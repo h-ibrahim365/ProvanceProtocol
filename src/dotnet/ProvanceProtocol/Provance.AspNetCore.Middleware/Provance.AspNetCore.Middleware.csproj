@@ -1,49 +1,32 @@
-<Project Sdk="Microsoft.NET.Sdk" ToolsVersion="Current">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
     <PackageId>Provance.AspNetCore.Middleware</PackageId>
-    <Version>0.0.3</Version>
-    <Authors>H. Id Brahim</Authors>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/h-ibrahim365/ProvanceProtocol</RepositoryUrl>
-    <PackageTags>aspnetcore;middleware;audit;tamper-evident;ledger;security;hmac;log-integrity</PackageTags>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <AssemblyName>Provance.AspNetCore.Middleware</AssemblyName>
-    <RootNamespace>Provance.AspNetCore.Middleware</RootNamespace>
-    <Description>ASP.NET Core middleware + DI helpers for PROVANCE tamper-evident audit trails.</Description>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/h-ibrahim365/ProvanceProtocol</PackageProjectUrl>
+    <Title>PROVANCE ASP.NET Core middleware</Title>
+    <Description>ASP.NET Core middleware that records every HTTP request in a PROVANCE tamper-evident ledger.</Description>
+    <PackageTags>aspnetcore;middleware;audit;audit-trail;tamper-evident;ledger</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>provanceMiddleWare.png</PackageIcon>
-    <Deterministic>true</Deterministic>
-    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
-    <Title>PROVANCE ASP.NET Core Middleware</Title>
-    <PackageReleaseNotes>v0.0.3: Single-writer correctness + Sequence ordering.</PackageReleaseNotes>
-    <Copyright>Copyright (c) 2025 Hakim ID BRAHIM</Copyright>
-    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <FileUpgradeFlags>
-    </FileUpgradeFlags>
-    <UpgradeBackupLocation>
-    </UpgradeBackupLocation>
-    <OldToolsVersion>2.0</OldToolsVersion>
-    <ProjectGuid>{267A9EE2-57CF-4864-9C00-9B76D7DAA080}</ProjectGuid>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <RootNamespace>Provance.AspNetCore.Middleware</RootNamespace>
   </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Provance.Core\Provance.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Provance.AspNetCore.Middleware.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\..\..\icons\provanceMiddleWare.png" Pack="true" PackagePath="\" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Provance.Core\Provance.Core.csproj" />
   </ItemGroup>
 </Project>

@@ -1,29 +1,26 @@
-﻿namespace Provance.Core.Data
+namespace Provance.Core.Data
 {
     /// <summary>
-    /// Contains the specific data for the event being audited.
-    /// This is the business content that will be included in the hash.
+    /// A general purpose payload shape. Any serializable object can be used as a payload;
+    /// this type is only a convenient default.
     /// </summary>
-    public class AuditedPayload
+    /// <remarks>
+    /// The payload is serialized with its runtime type, so properties of derived types are signed too.
+    /// Keep personal data out of payloads when you can: the ledger is append only.
+    /// </remarks>
+    public record AuditedPayload
     {
-        /// <summary>
-        /// Identifier of the user or system that performed the action.
-        /// </summary>
-        public string? ActorId { get; set; }
+        /// <summary>Identifier of the user or system that performed the action.</summary>
+        public string? ActorId { get; init; }
 
-        /// <summary>
-        /// Name or role of the actor (for log readability).
-        /// </summary>
-        public string? ActorRole { get; set; }
+        /// <summary>Role or kind of actor, for readability.</summary>
+        public string? ActorRole { get; init; }
 
-        /// <summary>
-        /// Textual description or metadata of the action.
-        /// </summary>
-        public string? Description { get; set; }
+        /// <summary>Short description of the action.</summary>
+        public string? Description { get; init; }
 
-        /// <summary>
-        /// Dictionary to store free-form, application-specific data fields.
-        /// </summary>
-        public Dictionary<string, object>? CustomData { get; set; }
+        /// <summary>Free form, application specific data.</summary>
+        /// <remarks>Store money amounts, large integers and precise decimals as strings (see RFC 8785 number rules).</remarks>
+        public IReadOnlyDictionary<string, object?>? Data { get; init; }
     }
 }

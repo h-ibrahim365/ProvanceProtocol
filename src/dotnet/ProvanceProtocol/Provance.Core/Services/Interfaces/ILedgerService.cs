@@ -1,55 +1,42 @@
-﻿using Provance.Core.Data;
+using Provance.Core.Data;
+using Provance.Core.Verification;
 
 namespace Provance.Core.Services.Interfaces
 {
     /// <summary>
-    /// Defines the basic operations for managing the PROVANCE tamper-evident audit ledger.
-    /// This is the primary contract for external consumption.
+    /// Entry point of the library: append audit events, read them back, verify the chain and create checkpoints.
     /// </summary>
     public interface ILedgerService
     {
         /// <summary>
-        /// Creates a transaction draft from the payload, enqueues it to the Single Writer service,
-        /// and awaits its successful sealing and persistence.
+        /// Serializes and canonicalizes <paramref name="payload"/>, hands it to the writer and waits until the
+        /// sealed entry is persisted.
         /// </summary>
         /// <remarks>
-        /// This operation guarantees linear consistency by delegating the cryptographic sealing
-        /// to a single background writer. It waits for an acknowledgment (ACK) before returning
-        /// the fully populated <see cref="LedgerEntry"/>.
+        /// The payload is serialized with its runtime type, so properties of derived types are signed.
+        /// Canceling <paramref name="cancellationToken"/> stops the wait, not the write: an entry already
+        /// queued may still be persisted.
         /// </remarks>
-        /// <param name="eventType">The type of event being audited (e.g., "USER_LOGIN").</param>
-        /// <param name="payload">The <see cref="AuditedPayload"/> instance containing the audit details.</param>
-        /// <param name="cancellationToken">A token to cancel the operation.</param>
-        /// <returns>
-        /// A task that returns the sealed <see cref="LedgerEntry"/> with <c>PreviousHash</c> and <c>CurrentHash</c> populated.
-        /// </returns>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="eventType"/> is null/empty/whitespace.</exception>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="payload"/> is null.</exception>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
-        Task<LedgerEntry> AddEntryAsync(string eventType, AuditedPayload payload, CancellationToken cancellationToken = default);
+        /// <exception cref="ArgumentException"><paramref name="eventType"/> is empty or longer than 200 characters.</exception>
+        /// <exception cref="FormatException">The payload does not serialize to valid canonical JSON.</exception>
+        /// <exception cref="Exceptions.LedgerOverloadedException">The queue is full and fail fast is configured.</exception>
+        /// <exception cref="Exceptions.LedgerUnavailableException">The writer is stopped or the store kept failing.</exception>
+        Task<LedgerEntry> AddEntryAsync<TPayload>(string eventType, TPayload payload, CancellationToken cancellationToken = default)
+            where TPayload : notnull;
 
-        /// <summary>
-        /// Retrieves the last entry written to the ledger to establish the chain head.
-        /// </summary>
-        /// <param name="cancellationToken">A token to cancel the operation.</param>
-        /// <returns>A task that returns the last <see cref="LedgerEntry"/>, or <c>null</c> if the ledger is empty.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
-        Task<LedgerEntry?> GetLastEntryAsync(CancellationToken cancellationToken = default);
+        /// <summary>Returns the last entry of the chain, or <c>null</c> if the ledger is empty.</summary>
+        Task<LedgerEntry?> GetHeadAsync(CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Verifies the complete cryptographic integrity of the ledger from the Genesis Hash to the latest entry.
-        /// </summary>
-        /// <param name="cancellationToken">
-        /// A token to cancel the verification operation. This is useful when verifying
-        /// large ledgers where the operation may take noticeable time.
-        /// </param>
-        /// <returns>
-        /// A tuple containing a boolean indicating validity and a string containing the reason for failure (if invalid),
-        /// or a success message (if valid).
-        /// </returns>
-        /// <exception cref="OperationCanceledException">
-        /// Thrown when <paramref name="cancellationToken"/> is canceled.
-        /// </exception>
-        Task<(bool IsValid, string Reason)> VerifyChainIntegrityAsync(CancellationToken cancellationToken = default);
+        /// <summary>Returns an entry by id, or <c>null</c>.</summary>
+        Task<LedgerEntry?> GetEntryAsync(Guid id, CancellationToken cancellationToken = default);
+
+        /// <summary>Verifies the chain. See <see cref="LedgerVerificationOptions"/> for checkpoint based verification.</summary>
+        Task<LedgerVerificationResult> VerifyAsync(LedgerVerificationOptions? options = null, CancellationToken cancellationToken = default);
+
+        /// <summary>Creates a signed checkpoint of the current head, or returns <c>null</c> if the ledger is empty.</summary>
+        Task<LedgerCheckpoint?> CreateCheckpointAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>Removes the payload of an entry while keeping the chain verifiable (GDPR erasure).</summary>
+        Task<bool> RedactPayloadAsync(Guid id, CancellationToken cancellationToken = default);
     }
 }
