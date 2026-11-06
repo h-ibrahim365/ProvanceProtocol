@@ -108,6 +108,6 @@ namespace Provance.AspNetCore.Middleware
         }
 
         internal static string ForLog(string? value) =>
-            value is null ? string.Empty : value.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal);
+            value is null ? string.Empty : value.Replace("\r", string.Empty).Replace("\n", string.Empty);
     }
 }
