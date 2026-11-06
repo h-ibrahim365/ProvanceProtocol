@@ -63,7 +63,7 @@ Log files and database files
 # Local outputs
 TestResults/
 nupkg/
-**/checkpoints/
+src/dotnet/ProvanceProtocol/Provance.Example.Api/checkpoints/
 
 *.db
 *.db-wal
