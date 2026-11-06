@@ -3,7 +3,12 @@
 All notable changes are listed here. The project follows semantic versioning; while the version is 0.x,
 a minor version may contain breaking changes.
 
-## Python 0.1.0 (in the repository, not published yet)
+## Unreleased
+
+* POM metadata: the project and SCM URLs of the modules pointed to `.../ProvanceProtocol/provance-core` (and so on),
+  which does not exist. They now point to the repository. No code change.
+
+## Python 0.1.0
 
 First Python implementation of ledger format 1, in `src/python`. Python 3.10 or later. Same behavior as the .NET
 and Java 0.1.0 libraries.

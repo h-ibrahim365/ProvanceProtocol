@@ -10,6 +10,7 @@
   <a href="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml"><img src="https://github.com/h-ibrahim365/ProvanceProtocol/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.nuget.org/packages/Provance.Core"><img src="https://img.shields.io/nuget/v/Provance.Core.svg?label=Provance.Core" alt="Provance.Core on NuGet" /></a>
   <a href="https://central.sonatype.com/artifact/io.github.h-ibrahim365/provance-core"><img src="https://img.shields.io/maven-central/v/io.github.h-ibrahim365/provance-core.svg?label=provance-core" alt="provance-core on Maven Central" /></a>
+  <a href="https://pypi.org/project/provance/"><img src="https://img.shields.io/pypi/v/provance.svg?label=provance" alt="provance on PyPI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license" /></a>
 </p>
 
@@ -24,7 +25,7 @@ Oracle, ...), and verification runs in your application or in a separate audit t
 | :------------- | :------- | :----- |
 | [.NET 8+](src/dotnet/README.md) | `Provance.Core`, `Provance.Storage.EntityFrameworkCore`, `Provance.AspNetCore.Middleware` on NuGet | Released |
 | [Java 17+](src/java/README.md) | `provance-core`, `provance-jdbc`, `provance-spring-boot-starter` on Maven Central (`io.github.h-ibrahim365`) | Released |
-| [Python 3.10+](src/python/README.md) | `provance` on PyPI: ledger, SQL store, FastAPI, Flask and Django integration, `provance verify` command | In this repository, not on PyPI yet |
+| [Python 3.10+](src/python/README.md) | `provance` on PyPI: ledger, SQL store, FastAPI, Flask and Django integration, `provance verify` command | Released |
 
 All three follow the same [ledger format](docs/SPEC.md) and pass the same [test vectors](docs/test-vectors/): a
 ledger written in one language can be verified, and continued, in the others. The `provance verify` command of the
