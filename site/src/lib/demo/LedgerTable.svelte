@@ -375,7 +375,8 @@
     flex-wrap: wrap;
     gap: 0.3rem;
     margin: 0;
-    padding: 0 0.9rem 0.6rem 3.5rem;
+    /* the row above ends with 0.55rem of padding: 0.2rem more makes the gap above the badges equal to the 0.75rem below */
+    padding: 0.2rem 0.9rem 0.75rem 3.5rem;
     font-size: var(--t-xs);
   }
 
@@ -404,6 +405,11 @@
     align-items: center;
     gap: 0.5rem 0.65rem;
     padding: 0.75rem 0.9rem 0.75rem 3.5rem;
+  }
+
+  /* under the check badges, the badges' own 0.75rem is the gap */
+  .checks + .tools {
+    padding-top: 0;
   }
 
   .tools .btn {
