@@ -146,7 +146,7 @@
         </div>
         <div class="try-col" role="cell">
           {#if attack.run}
-            <button class="btn quiet" onclick={() => play(attack)}>Try it<span class="long">&nbsp;in the demo</span></button>
+            <button class="btn quiet" onclick={() => play(attack)}>Try it<span class="long">in the demo</span></button>
           {:else}
             <span class="undetected">Not detected</span>
           {/if}
@@ -201,13 +201,15 @@
     border-bottom: none;
   }
 
+  /* the three layer names line up at the top, whatever the length of their description */
   .head {
-    align-items: end;
+    align-items: start;
     border-bottom: 3px double var(--red);
     padding-top: 0.9rem;
   }
 
   .head .attack {
+    align-self: end;
     font-size: var(--t-xs);
     color: var(--ink-soft);
     font-weight: 600;
