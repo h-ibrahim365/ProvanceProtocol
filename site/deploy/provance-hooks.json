@@ -1,0 +1,29 @@
+[
+  {
+    "id": "provance-deploy",
+    "execute-command": "/usr/local/bin/deploy-provance.sh",
+    "command-working-directory": "/opt/provance",
+    "response-message": "PROVANCE deploy started",
+    "pass-arguments-to-command": [
+      { "source": "payload", "name": "workflow_run.head_sha" }
+    ],
+    "trigger-rule": {
+      "and": [
+        {
+          "match": {
+            "type": "payload-hash-sha256",
+            "secret": "REPLACE_WITH_THE_WEBHOOK_SECRET",
+            "parameter": { "source": "header", "name": "X-Hub-Signature-256" }
+          }
+        },
+        { "match": { "type": "value", "value": "workflow_run", "parameter": { "source": "header", "name": "X-GitHub-Event" } } },
+        { "match": { "type": "value", "value": "completed", "parameter": { "source": "payload", "name": "action" } } },
+        { "match": { "type": "value", "value": "CI", "parameter": { "source": "payload", "name": "workflow_run.name" } } },
+        { "match": { "type": "value", "value": "success", "parameter": { "source": "payload", "name": "workflow_run.conclusion" } } },
+        { "match": { "type": "value", "value": "push", "parameter": { "source": "payload", "name": "workflow_run.event" } } },
+        { "match": { "type": "value", "value": "main", "parameter": { "source": "payload", "name": "workflow_run.head_branch" } } },
+        { "match": { "type": "value", "value": "h-ibrahim365/ProvanceProtocol", "parameter": { "source": "payload", "name": "workflow_run.head_repository.full_name" } } }
+      ]
+    }
+  }
+]

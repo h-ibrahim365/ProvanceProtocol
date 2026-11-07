@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/opt/provance-status/provance-status
+ExecStart=/opt/provance/bin/provance-status
 EnvironmentFile=-/etc/provance-status.env
 Environment=PROVANCE_STATUS_ADDR=127.0.0.1:8787
 DynamicUser=yes

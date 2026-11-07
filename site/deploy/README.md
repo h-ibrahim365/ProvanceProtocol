@@ -1,102 +1,135 @@
 # Deploying the demo site
 
-The site is static files served by Caddy. The Releases page reads `/api/status` from `provance-status`, a small
-Rust service that polls GitHub, NuGet, Maven Central and PyPI and keeps the answers in memory. Visitors never call
-those APIs directly.
+The site is served by Caddy on the VPS. The Releases page reads `/api/status` from `provance-status`, a small Rust
+service that polls GitHub, NuGet, Maven Central and PyPI and keeps the answers in memory.
+
+Deployment follows a GitHub webhook, like the other sites on the server:
 
 ```
-browser ── HTTPS ──> Caddy ──> /var/www/provance-demo        (static site)
-                          └──> 127.0.0.1:8787 /api/*         (provance-status)
+push to main ─> CI succeeds ─> GitHub sends "workflow_run completed"
+             ─> Caddy /hooks/provance-deploy ─> provance-webhook (127.0.0.1:9002, checks the signature)
+             ─> /usr/local/bin/deploy-provance.sh <commit>
+                  pulls, tests and builds site/ and site/server/ on the server,
+                  swaps /opt/provance/web and the binary, restarts provance-status,
+                  puts the previous version back if the service is not healthy
 ```
 
-The GitHub workflow `deploy-site.yml` builds both on every push to `main` that touches `site/`, then copies them to
-the server over SSH. The steps below are done once.
+Only a CI run that succeeded on a push to `main` deploys. Pushes that do not touch `site/` or
+`docs/test-vectors/` are skipped.
 
-Commands assume Ubuntu or Debian, run as root on the server. Replace `demo.example.com` with your domain.
+| What | Where |
+| :--- | :--- |
+| Source checkout | `/opt/provance/source` |
+| Served site | `/opt/provance/web` |
+| Status service binary | `/opt/provance/bin/provance-status` |
+| Deploy script | `/usr/local/bin/deploy-provance.sh` (copy of `deploy-provance.sh`) |
+| Webhook config | `/etc/webhook/provance-hooks.json` |
+| Caddy site | `/etc/caddy/sites/provance.caddy` |
+| Deploy log | `/var/log/provance/deploy.log` |
 
-## 1. DNS
+## One-time setup
 
-Create an `A` record (and `AAAA` if the server has IPv6) for the domain, pointing to the server.
+Commands run as root on the server. The domain is `provance.iamhakim.com`; to use another one, change the first
+line of `provance.caddy`.
 
-## 2. Caddy
-
-Skip this if another web server already listens on ports 80 and 443: add a site and a reverse proxy rule for
-`/api/` to it instead, using `Caddyfile` as the reference.
+### 1. Check that the ports are free
 
 ```bash
-apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
-apt update && apt install -y caddy
+ss -tlnp | grep -E ':(9002|8787)\b'     # must print nothing
 ```
 
-Copy `Caddyfile` to `/etc/caddy/Caddyfile` (or add its block to the existing one), set the domain, then
-`systemctl reload caddy`. Caddy gets the certificate on its own.
+### 2. DNS (Cloudflare)
 
-## 3. Deploy user and folders
+Same as `whoami`: in the `iamhakim.com` zone, add a `CNAME` record `provance` pointing to `iamhakim.com`, Proxied.
 
-A user that can only write the two folders and restart the service:
+### 3. User, folders, toolchains
 
 ```bash
-adduser --disabled-password --gecos "" deploy
-mkdir -p /var/www/provance-demo /opt/provance-status
-chown deploy:deploy /var/www/provance-demo /opt/provance-status
-echo 'deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart provance-status' > /etc/sudoers.d/provance-deploy
-chmod 440 /etc/sudoers.d/provance-deploy
-apt install -y rsync
+adduser --system --group --home /opt/provance --shell /bin/bash provance
+mkdir -p /opt/provance/bin /var/log/provance
+chown -R provance:provance /opt/provance /var/log/provance
+echo 'provance ALL=(root) NOPASSWD: /usr/bin/systemctl restart provance-status' > /etc/sudoers.d/provance
+chmod 440 /etc/sudoers.d/provance && visudo -c
+
+apt install -y git curl build-essential
+node --version     # 22.12 or later; otherwise install Node 22
+sudo -u provance -H bash -c 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal'
+sudo -u provance -H git clone https://github.com/h-ibrahim365/ProvanceProtocol.git /opt/provance/source
 ```
 
-Key pair for GitHub Actions:
+### 4. Services, webhook and Caddy site
 
 ```bash
-ssh-keygen -t ed25519 -N "" -C github-deploy -f /root/provance-deploy
-install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
-cat /root/provance-deploy.pub >> /home/deploy/.ssh/authorized_keys
-chown deploy:deploy /home/deploy/.ssh/authorized_keys && chmod 600 /home/deploy/.ssh/authorized_keys
-```
+cd /opt/provance/source/site/deploy
+install -m 755 deploy-provance.sh /usr/local/bin/deploy-provance.sh
+install -m 644 provance-status.service provance-webhook.service /etc/systemd/system/
+install -m 644 provance.caddy /etc/caddy/sites/provance.caddy
 
-## 4. Service
+mkdir -p /etc/webhook
+SECRET=$(openssl rand -hex 32)
+sed "s/REPLACE_WITH_THE_WEBHOOK_SECRET/$SECRET/" provance-hooks.json > /etc/webhook/provance-hooks.json
+chown root:provance /etc/webhook/provance-hooks.json && chmod 640 /etc/webhook/provance-hooks.json
+echo "$SECRET"      # paste it in GitHub at step 8
 
-```bash
-cp provance-status.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable provance-status
+systemctl enable provance-status provance-webhook
+systemctl start provance-webhook
 ```
 
-Optional but recommended: a GitHub token raises the API limit from 60 to 5000 requests per hour, so the page
-updates every 10 seconds during a release instead of every 90. Create a fine-grained token with access to public
-repositories only and no permissions, then:
+Optional, recommended: a GitHub token raises the API limit from 60 to 5000 requests per hour, so the Releases page
+refreshes every 10 seconds during a release instead of every 90. A fine-grained token with access to public
+repositories only and no permissions is enough:
 
 ```bash
 install -m 600 /dev/null /etc/provance-status.env
 nano /etc/provance-status.env      # GITHUB_TOKEN=github_pat_...
 ```
 
-The service starts with the first deployment.
-
-## 5. GitHub
-
-In the repository settings, create an environment named `demo-site`, then these secrets (from your computer, with
-`gh`, so they never appear on a command line):
+### 5. First deployment, by hand
 
 ```bash
-ssh root@demo.example.com cat /root/provance-deploy | gh secret set SITE_SSH_KEY --env demo-site
-ssh-keyscan -t ed25519 demo.example.com | gh secret set SITE_KNOWN_HOSTS --env demo-site
-gh secret set SITE_HOST --env demo-site --body demo.example.com
-gh secret set SITE_USER --env demo-site --body deploy
+sudo -u provance -H /usr/local/bin/deploy-provance.sh
+tail -n 20 /var/log/provance/deploy.log      # ends with "deployed <commit>"
+curl -s http://127.0.0.1:8787/api/health      # ok
 ```
 
-On an ARM server (Hetzner CAX), also: `gh variable set VPS_ARCH --body arm64`.
+The first run takes a few minutes (Rust build). Later runs reuse the build cache.
 
-Then delete the private key from the server (`rm /root/provance-deploy`) and run the workflow once:
-`gh workflow run deploy-site.yml`.
-
-## Checking
+### 6. Caddy
 
 ```bash
+caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+curl -sI https://provance.iamhakim.com | head -1      # HTTP/2 200
+```
+
+If Caddy cannot get its certificate (`journalctl -u caddy -n 50` mentions ACME errors), switch the record to DNS
+only (grey cloud), reload Caddy, then switch it back to Proxied once the site answers.
+
+### 7. Cloudflare
+
+Nothing else to set: the zone already runs in SSL mode Full (strict), and Web Analytics is injected automatically
+on proxied subdomains (the Caddy CSP allows its script).
+
+### 8. GitHub webhook
+
+Repository Settings, Webhooks, Add webhook:
+
+* Payload URL: `https://provance.iamhakim.com/hooks/provance-deploy`
+* Content type: `application/json`
+* Secret: the value printed at step 4
+* SSL verification: enabled
+* Events: "Let me select individual events", untick Pushes, tick **Workflow runs** only
+
+GitHub sends a ping first; the listener answers "Hook rules were not satisfied", which is expected.
+
+## Day to day
+
+```bash
+journalctl -u provance-webhook -f           # webhooks received
+tail -f /var/log/provance/deploy.log         # deployments
 systemctl status provance-status
-journalctl -u provance-status -f
-curl -s http://127.0.0.1:8787/api/status | head -c 400
+sudo -u provance -H /usr/local/bin/deploy-provance.sh    # redeploy main by hand
 ```
 
-If a registry does not answer, the page keeps its last known data and shows which source is down.
+When `deploy-provance.sh`, the units or `provance.caddy` change in the repo, copy them again as in step 4: like
+for iamhakim.com, the files outside `/opt/provance` are not updated by a deployment.
