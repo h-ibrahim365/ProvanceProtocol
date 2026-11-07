@@ -189,7 +189,7 @@ pub fn language_of_tag(tag: &str) -> Option<&'static str> {
         Some("java")
     } else if tag.starts_with("python-v") {
         Some("python")
-    } else if tag.starts_with('v') {
+    } else if tag.starts_with("dotnet-v") || tag.starts_with('v') {
         Some("dotnet")
     } else {
         None
@@ -280,6 +280,7 @@ mod tests {
                 ("v0.1.0", "dotnet")
             ]
         );
+        assert_eq!(language_of_tag("dotnet-v0.2.0"), Some("dotnet"));
         assert_eq!(language_of_tag("nightly"), None);
     }
 }

@@ -48,6 +48,7 @@ Same as `whoami`: in the `iamhakim.com` zone, add a `CNAME` record `provance` po
 adduser --system --group --home /opt/provance --shell /bin/bash provance
 mkdir -p /opt/provance/bin /var/log/provance
 chown -R provance:provance /opt/provance /var/log/provance
+chmod 755 /opt/provance     # adduser makes it 750; Caddy and the status service must be able to enter it
 echo 'provance ALL=(root) NOPASSWD: /usr/bin/systemctl restart provance-status' > /etc/sudoers.d/provance
 chmod 440 /etc/sudoers.d/provance && visudo -c
 

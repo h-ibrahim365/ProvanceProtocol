@@ -15,7 +15,49 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  build-test:
+  # Decides which parts of the repository changed, so a push that only touches Python does not rebuild .NET, Java
+  # and the site. Changes to the shared test vectors or to this workflow run everything.
+  changes:
+    name: Changed parts
+    runs-on: ubuntu-latest
+    outputs:
+      dotnet: ${{ steps.diff.outputs.dotnet }}
+      java: ${{ steps.diff.outputs.java }}
+      python: ${{ steps.diff.outputs.python }}
+      site: ${{ steps.diff.outputs.site }}
+      vectors: ${{ steps.diff.outputs.vectors }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ "$BASE" =~ ^[0-9a-f]{40}$ && ! "$BASE" =~ ^0+$ ]] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$BASE" "$GITHUB_SHA")
+          else
+            files="(unknown base, everything runs)"
+            all=true
+          fi
+          shared='^(docs/test-vectors/|\.github/workflows/ci\.yml$)'
+          changed() {
+            if [[ "${all:-}" == true ]] || grep -qE "$1|$shared" <<<"$files"; then echo true; else echo false; fi
+          }
+          {
+            echo "dotnet=$(changed '^src/dotnet/')"
+            echo "java=$(changed '^src/java/')"
+            echo "python=$(changed '^src/python/')"
+            echo "site=$(changed '^site/')"
+            echo "vectors=$(changed '^docs/test-vectors/')"
+          } | tee -a "$GITHUB_OUTPUT"
+          { echo '### Changed files'; echo '```'; echo "$files"; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+
+  dotnet:
+    name: .NET
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,10 +83,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: dotnet-test-results
           path: TestResults
 
   test-vectors:
+    name: Test vectors
+    needs: changes
+    if: needs.changes.outputs.vectors == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +102,9 @@ jobs:
           python docs/test-vectors/verify.py
 
   java:
+    name: Java ${{ matrix.java }}
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -86,6 +134,9 @@ jobs:
           path: src/java/**/target/surefire-reports
 
   python:
+    name: Python ${{ matrix.python }}
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -124,8 +175,10 @@ jobs:
           python -m build
           twine check --strict dist/*
 
-
   site:
+    name: Demo site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

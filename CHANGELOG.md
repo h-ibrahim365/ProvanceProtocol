@@ -7,6 +7,10 @@ a minor version may contain breaking changes.
 
 * POM metadata: the project and SCM URLs of the modules pointed to `.../ProvanceProtocol/provance-core` (and so on),
   which does not exist. They now point to the repository. No code change.
+* Release tags: from 0.2.0 the .NET packages are released from a tag `dotnet-vX.Y.Z`, like `java-vX.Y.Z` and
+  `python-vX.Y.Z`. The `vX.Y.Z` tag of 0.1.0 stays as it is and is still accepted.
+* CI runs only the jobs for the parts a push or pull request changes. Changes to `docs/test-vectors/` or to the
+  workflow run everything.
 
 ## Python 0.1.0
 

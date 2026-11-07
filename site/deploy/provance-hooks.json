@@ -11,7 +11,7 @@
       "and": [
         {
           "match": {
-            "type": "payload-hash-sha256",
+            "type": "payload-hmac-sha256",
             "secret": "REPLACE_WITH_THE_WEBHOOK_SECRET",
             "parameter": { "source": "header", "name": "X-Hub-Signature-256" }
           }

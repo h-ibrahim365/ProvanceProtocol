@@ -1,6 +1,6 @@
 name: Release
 
-# Publishing a GitHub release tagged vX.Y.Z builds, tests and pushes the three packages to NuGet
+# Publishing a GitHub release tagged dotnet-vX.Y.Z (or vX.Y.Z, used up to 0.1.0) builds, tests and pushes the three packages to NuGet
 # (Trusted Publishing: no API key stored in the repository).
 on:
   release:
@@ -17,7 +17,7 @@ env:
 
 jobs:
   publish:
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: startsWith(github.event.release.tag_name, 'dotnet-v') || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,11 +30,12 @@ jobs:
 
       - name: Check that the tag matches Directory.Build.props
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME#dotnet-}"
+          TAG="${TAG#v}"
           PROPS=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/dotnet/ProvanceProtocol/Directory.Build.props)
           echo "tag=$TAG props=$PROPS"
           if [ "$TAG" != "$PROPS" ]; then
-            echo "::error::Release tag v$TAG does not match <Version>$PROPS</Version> in Directory.Build.props"
+            echo "::error::Release tag $GITHUB_REF_NAME does not match <Version>$PROPS</Version> in Directory.Build.props"
             exit 1
           fi
 
