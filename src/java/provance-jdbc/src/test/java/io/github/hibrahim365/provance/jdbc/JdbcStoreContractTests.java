@@ -4,6 +4,7 @@ import io.github.hibrahim365.provance.AuditedPayload;
 import io.github.hibrahim365.provance.LedgerConcurrencyException;
 import io.github.hibrahim365.provance.LedgerEntry;
 import io.github.hibrahim365.provance.ProvanceLedger;
+import io.github.hibrahim365.provance.RetentionResult;
 import io.github.hibrahim365.provance.verification.LedgerVerificationResult;
 import io.github.hibrahim365.provance.verification.VerificationFailure;
 
@@ -12,7 +13,10 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -178,6 +182,41 @@ abstract class JdbcStoreContractTests {
         LedgerVerificationResult result = ledger.verify();
         assertTrue(result.valid(), result.message());
         assertEquals(1, result.redactedPayloads());
+    }
+
+    @Test
+    void archiveTableAndRetentionKeepTheLedgerVerifiable() {
+        JdbcLedgerStore store = store();
+        JdbcStoreOptions archiveOptions = new JdbcStoreOptions();
+        archiveOptions.setTableName(table + "_a");
+        JdbcLedgerStore archive = new JdbcLedgerStore(dataSource(), archiveOptions);
+
+        // Three entries written 30 days ago, then two now.
+        try (ProvanceLedger old = ProvanceLedger.builder().ledgerId("jdbc-test").secretKey(SECRET).store(store)
+                .clock(Clock.fixed(Instant.now().minus(Duration.ofDays(30)), ZoneOffset.UTC)).build()) {
+            for (int i = 0; i < 3; i++) {
+                old.addEntry("EVENT", AuditedPayload.of("u", "old " + i));
+            }
+        }
+        ProvanceLedger ledger = ProvanceLedger.builder().ledgerId("jdbc-test").secretKey(SECRET).store(store)
+                .archive(archive).build();
+        opened.add(ledger);
+        ledger.addEntry("EVENT", AuditedPayload.of("u", "new 1"));
+        ledger.addEntry("EVENT", AuditedPayload.of("u", "new 2"));
+
+        RetentionResult retention = ledger.applyRetention(Duration.ofDays(7));
+
+        assertTrue(retention.applied(), retention.message());
+        assertEquals(2, retention.removedEntries());
+        assertEquals(3, retention.firstSequence());
+        try (Stream<LedgerEntry> entries = store.read(1)) {
+            assertEquals(3, entries.findFirst().orElseThrow().sequence());
+        }
+        LedgerVerificationResult result = ledger.verify();
+        assertTrue(result.valid(), result.message());
+        assertEquals(3, result.firstSequence());
+        assertTrue(ledger.compareWithArchive().identical());
+        assertEquals(6, archive.getHead().orElseThrow().sequence());
     }
 
     @Test

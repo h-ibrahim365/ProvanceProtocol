@@ -13,8 +13,11 @@ Write audit events into a hash chained, signed ledger, and verify ledgers writte
 
 from importlib.metadata import PackageNotFoundError, version
 
+from .archive import ArchiveStatus
+from .comparison import DifferenceKind, EntryDifference, FieldDifference, LedgerComparer, LedgerComparison, OriginalCopy
 from .checkpoints import FileCheckpointSink, LedgerCheckpointSink, read_latest_checkpoint
 from .errors import (
+    LedgerArchiveError,
     LedgerConcurrencyError,
     LedgerError,
     LedgerOverloadedError,
@@ -33,7 +36,8 @@ from .format import (
     parse_timestamp,
     sha256_hex,
 )
-from .ledger import ProvanceLedger
+from .ledger import ProvanceLedger, RetentionResult
+from .records import REDACTION_EVENT, RETENTION_EVENT
 from .models import AuditedPayload, LedgerCheckpoint, LedgerEntry
 from .options import ProvanceOptions, QueueFullBehavior
 from .payload import canonical_payload
@@ -57,6 +61,17 @@ except PackageNotFoundError:  # running from a source checkout
     __version__ = "0.0.0"
 
 __all__ = [
+    "REDACTION_EVENT",
+    "RETENTION_EVENT",
+    "ArchiveStatus",
+    "DifferenceKind",
+    "EntryDifference",
+    "FieldDifference",
+    "LedgerArchiveError",
+    "LedgerComparer",
+    "LedgerComparison",
+    "OriginalCopy",
+    "RetentionResult",
     "FORMAT_VERSION",
     "AuditedPayload",
     "FileCheckpointSink",

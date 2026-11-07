@@ -6,6 +6,8 @@ Python implementation of PROVANCE, the tamper-evident audit trail. It writes the
 ([format specification](https://github.com/h-ibrahim365/ProvanceProtocol/blob/main/docs/SPEC.md)) and passes the
 same test vectors: a ledger written in one language can be verified, and continued, in the others.
 
+To see what it does before installing anything, try the [live demo](https://provance.iamhakim.com).
+
 It also ships the `provance verify` command, so an auditor or a security team can check a ledger written by any of
 the three without installing .NET or Java.
 
@@ -260,7 +262,60 @@ verifier = LedgerVerifier(SqlLedgerReader(connection, dialect),
 result = verifier.verify(checkpoint=checkpoint)
 ```
 
+## Several ledgers
+
+Create one `ProvanceLedger` per ledger, each with its own `ledger_id`, key and table. The HTTP integrations write to
+the ledger you pass them.
+
+```python
+billing = ProvanceLedger(ledger_id="billing-prod", secret_key=..., store=SqlLedgerStore.from_url(url, table="provance_ledger_billing"))
+access = ProvanceLedger(ledger_id="access-prod", secret_key=..., store=SqlLedgerStore.from_url(url, table="provance_ledger_access"))
+app.add_middleware(ProvanceAsgiMiddleware, ledger=access)
+```
+
+## Archive copy and comparison (0.2)
+
+```python
+ledger = ProvanceLedger(
+    ledger_id="orders-api-prod",
+    secret_key=os.environ["PROVANCE_SECRET_KEY"],
+    store=SqlLedgerStore.from_url(app_url),
+    archive=SqlLedgerStore.from_url(archive_url, table="provance_archive"),   # an account that can only insert
+)
+
+comparison = ledger.compare_with_archive()
+if not comparison.identical:
+    log.critical(comparison.describe())
+```
+
+Every entry is copied to the archive in a background thread, after being checked: an entry modified before it was
+copied is not propagated, and `archive_status()` reports it. When verification fails, the comparison shows which
+field changed and its original value:
+
+```
+Entry 42 (ORDER_REFUNDED) was changed in the primary store (the archive copy verifies, the primary copy does not).
+  payload.data.amount: "49.90" -> "4990.00"
+```
+
+From the command line, between two databases or exports:
+
+```bash
+provance diff postgresql://auditor@db/app postgresql://auditor@archive/audit --ledger-id orders-api-prod
+provance diff primary.jsonl archive.jsonl --ledger-id orders-api-prod
+```
+
+`redact_payload` erases the payload in both copies, after appending a signed redaction record: a payload set to
+`NULL` directly in the database is reported by `verify()` (`unrecorded_redaction`). Ledgers erased with 0.1 verify
+with `accept_unrecorded_redactions=True` (`--accept-unrecorded-redactions` on the command line).
+
+## Retention (0.2)
+
+`retention_keep_for=timedelta(days=7)` removes older entries from the primary store once the archive holds an identical
+copy, after appending a signed retention record; `verify()` still passes, and deleting the first entries without such a
+record is still detected. Or call `ledger.apply_retention(timedelta(days=7))` from a scheduled job. Needs `DELETE` on
+the primary table. See [RETENTION.md](https://github.com/h-ibrahim365/ProvanceProtocol/blob/main/docs/RETENTION.md).
+
 ## Status
 
-Version 0.1.0, format 1. Same behavior as the .NET and Java 0.1.0 libraries. Tested on Python 3.10 to 3.13, with
+Version 0.2.0, format 1. Same behavior as the .NET and Java 0.2.0 libraries. Tested on Python 3.10 to 3.13, with
 SQLite and PostgreSQL.

@@ -4,6 +4,7 @@ import io.github.hibrahim365.provance.AuditedPayload;
 import io.github.hibrahim365.provance.LedgerCheckpoint;
 import io.github.hibrahim365.provance.LedgerEntry;
 import io.github.hibrahim365.provance.ProvanceLedger;
+import io.github.hibrahim365.provance.compare.LedgerComparison;
 import io.github.hibrahim365.provance.jdbc.JdbcLedgerStore;
 import io.github.hibrahim365.provance.jdbc.SqlDialect;
 import io.github.hibrahim365.provance.signing.HmacLedgerSigner;
@@ -17,6 +18,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 
 import java.nio.file.Files;
+import java.time.Duration;
 import java.nio.file.Path;
 import java.util.UUID;
 
@@ -133,5 +135,80 @@ class ProvanceAutoConfigurationTests {
                     ProvanceAuditFilter filter = context.getBean(ProvanceAuditFilter.class);
                     assertEquals(5, filter.getOrder());
                 });
+    }
+
+    @Test
+    void archiveTableOnTheApplicationDataSource() {
+        runner.withBean(DataSource.class, ProvanceAutoConfigurationTests::h2)
+                .withPropertyValues("provance.ledger-id=orders-api-test", "provance.secret-key=" + SECRET,
+                        "provance.archive.enabled=true")
+                .run(context -> {
+                    ProvanceLedger ledger = context.getBean(ProvanceLedger.class);
+                    ledger.addEntry("ORDER_CREATED", AuditedPayload.of("user-42", "created"));
+                    LedgerComparison comparison = ledger.compareWithArchive();
+                    assertTrue(comparison.identical(), comparison.describe());
+                    assertEquals(1, comparison.compared());
+
+                    JdbcLedgerStore archive = assertInstanceOf(JdbcLedgerStore.class, context.getBean(ProvanceArchive.class).store());
+                    assertTrue(archive.createTableStatements().get(0).startsWith("CREATE TABLE provance_archive"));
+                    assertInstanceOf(JdbcLedgerStore.class, context.getBean(LedgerStore.class)); // still a single store bean
+                });
+    }
+
+    @Test
+    void archiveTableMustDifferFromTheLedgerTable() {
+        runner.withBean(DataSource.class, ProvanceAutoConfigurationTests::h2)
+                .withPropertyValues("provance.ledger-id=orders-api-test", "provance.secret-key=" + SECRET,
+                        "provance.archive.enabled=true", "provance.archive.table-name=provance_ledger")
+                .run(context -> assertTrue(failureMessages(context.getStartupFailure()).contains("must differ")));
+    }
+
+    @Test
+    void anArchiveBeanAndRetentionPropertiesAreUsed() {
+        InMemoryLedgerStore archive = new InMemoryLedgerStore();
+        runner.withBean(LedgerStore.class, InMemoryLedgerStore::new)
+                .withBean(ProvanceArchive.class, () -> new ProvanceArchive(archive))
+                .withPropertyValues("provance.ledger-id=orders-api-test", "provance.secret-key=" + SECRET,
+                        "provance.retention-keep-for=400d", "provance.retention-interval=12h",
+                        "provance.retention-require-archive=true")
+                .run(context -> {
+                    ProvanceProperties properties = context.getBean(ProvanceProperties.class);
+                    assertEquals(Duration.ofDays(400), properties.getRetentionKeepFor());
+                    assertEquals(Duration.ofHours(12), properties.getRetentionInterval());
+
+                    ProvanceLedger ledger = context.getBean(ProvanceLedger.class);
+                    ledger.addEntry("EVENT", AuditedPayload.of("u", "x"));
+                    assertTrue(ledger.compareWithArchive().identical());
+                    assertEquals(1, archive.size());
+                    assertTrue(ledger.archiveStatus().orElseThrow().healthy());
+                });
+    }
+
+    @Test
+    void severalLedgersAndTheOneThatReceivesHttpEntries() {
+        new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(ProvanceAutoConfiguration.class))
+                .withBean("ordersLedger", ProvanceLedger.class, () -> namedLedger("orders"))
+                .withBean("paymentsLedger", ProvanceLedger.class, () -> namedLedger("payments"))
+                .withPropertyValues("provance.http.enabled=true", "provance.http.ledger-bean=paymentsLedger")
+                .run(context -> {
+                    assertEquals(2, context.getBeansOfType(ProvanceLedger.class).size());
+                    ProvanceAuditFilter filter = context.getBean(ProvanceAuditFilter.class);
+                    assertEquals("payments", ((ProvanceLedger) filter.ledger()).ledgerId());
+                });
+    }
+
+    @Test
+    void withSeveralLedgersHttpAuditingNeedsTheLedgerName() {
+        new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(ProvanceAutoConfiguration.class))
+                .withBean("ordersLedger", ProvanceLedger.class, () -> namedLedger("orders"))
+                .withBean("paymentsLedger", ProvanceLedger.class, () -> namedLedger("payments"))
+                .withPropertyValues("provance.http.enabled=true")
+                .run(context -> assertTrue(failureMessages(context.getStartupFailure()).contains("provance.http.ledger-bean")));
+    }
+
+    private static ProvanceLedger namedLedger(String id) {
+        return ProvanceLedger.builder().ledgerId(id).secretKey(SECRET).store(new InMemoryLedgerStore()).build();
     }
 }

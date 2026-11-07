@@ -1,7 +1,9 @@
 // State of the guided demo: an in-memory ledger that the visitor writes, tampers with and verifies.
 
-import { type Checkpoint, type Json, type LedgerEntry, HmacKeys, canonicalize, entryHash, sha256Hex } from "../provance/format";
-import { type VerificationResult, createCheckpoint, seal, verify } from "../provance/ledger";
+import { type LedgerComparison, compare, verifiesAlone } from "../provance/compare";
+import { type Checkpoint, type Json, type LedgerEntry, HmacKeys, canonicalize, entryHash, genesisHash, sha256Hex } from "../provance/format";
+import { type VerificationResult, REDACTION_EVENT, RETENTION_EVENT, createCheckpoint, redactionPayload, retentionPayload, seal,
+  verify } from "../provance/ledger";
 
 export const LEDGER_ID = "orders-api-demo";
 export const KEY_ID = "k1";
@@ -22,7 +24,9 @@ export const PRESETS: Preset[] = [
   { eventType: "API_KEY_CREATED", payload: { actorId: "dev-11", keyName: "ci-deploy", scope: "write" } },
 ];
 
-export type Edit = "payload" | "event" | "moved" | "resealed" | "rewritten" | "redacted";
+export type Edit = "payload" | "event" | "moved" | "resealed" | "rewritten" | "redacted" | "nulled";
+
+const DAY = 24 * 3600 * 1000;
 
 export interface Verification {
   result: VerificationResult;
@@ -40,6 +44,17 @@ export class Demo {
   selected = $state<number>(0);
   checkpoint = $state<Checkpoint | null>(null);
   verification = $state<Verification | null>(null);
+  /** 0.2 behavior: erasures are recorded, and verification requires the record. */
+  recordsRedactions = $state(false);
+  /** Second database, or null when no archive is configured. */
+  archive = $state<LedgerEntry[] | null>(null);
+  archiveEdits = $state<Record<string, Edit[]>>({});
+  archiveProblem = $state<string | null>(null);
+  comparison = $state<LedgerComparison | null>(null);
+  /** First sequence still in the table after retention. */
+  retainedFrom = $state(1);
+  retentionReport = $state<{ ok: boolean; text: string } | null>(null);
+  private archiveOriginal: LedgerEntry[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
   private next = 0;
   /** The table as written by the application, to undo tampering. */
@@ -54,7 +69,8 @@ export class Demo {
   }
 
   get tampered(): boolean {
-    return Object.keys(this.edits).length > 0 || this.removed.length > 0;
+    return Object.keys(this.edits).some((id) => this.edits[id]!.some((e) => e !== "redacted"))
+      || this.removed.length > 0 || Object.keys(this.archiveEdits).length > 0;
   }
 
   nextPreset(): Preset {
@@ -63,13 +79,15 @@ export class Demo {
 
   // --- what the application does ---------------------------------------------------------------------------
 
-  record(eventType: string, payload: Json): void {
-    const entry = seal(this.head, LEDGER_ID, KEY_ID, keys, eventType, payload);
+  record(eventType: string, payload: Json, at: Date = new Date()): LedgerEntry {
+    const entry = seal(this.head, LEDGER_ID, KEY_ID, keys, eventType, payload, at);
     this.entries.push(entry);
     this.original.push(entry);
-    this.next++;
+    if (!eventType.startsWith("provance.")) this.next++;
     this.selected = this.entries.length - 1;
     this.invalidate();
+    this.copyToArchive();
+    return entry;
   }
 
   recordNext(count = 1): void {
@@ -87,12 +105,127 @@ export class Demo {
     if (this.head) this.checkpoint = createCheckpoint(this.head, KEY_ID, keys);
   }
 
+  /** Erasure through the library. From 0.2 it first appends a signed record naming the entry. */
   redact(index: number): void {
     const e = this.entries[index];
     if (!e || e.payloadJson === null) return;
-    this.entries[index] = { ...e, payloadJson: null };
-    this.original = this.original.map((o) => (o.id === e.id ? { ...o, payloadJson: null } : o));
+    if (this.recordsRedactions) this.record(REDACTION_EVENT, redactionPayload(e));
+    const erase = (list: LedgerEntry[]) => list.map((o) => (o.id === e.id ? { ...o, payloadJson: null } : o));
+    this.entries = erase(this.entries);
+    this.original = erase(this.original);
+    if (this.archive) {
+      this.archive = erase(this.archive);
+      this.archiveOriginal = erase(this.archiveOriginal);
+    }
     this.mark(e.id, "redacted", false);
+    this.selected = index;
+    this.invalidate();
+  }
+
+  // --- archive copy (0.2) ------------------------------------------------------------------------------------
+
+  enableArchive(): void {
+    if (this.archive) return;
+    this.archive = [];
+    this.archiveOriginal = [];
+    this.copyToArchive();
+  }
+
+  /**
+   * What the background copy does: each entry must continue the archive's chain and verify on its own, otherwise
+   * copying stops there.
+   */
+  copyToArchive(): void {
+    if (!this.archive) return;
+    const head = this.archive.at(-1);
+    let next = head ? head.sequence + 1 : 1;
+    let previous = head ? head.hash : genesisHash(LEDGER_ID);
+    for (const entry of this.entries) {
+      if (entry.sequence < next) continue;
+      let problem: string | null = null;
+      if (entry.sequence !== next) problem = `Entry ${next} is missing from the main table but was never copied.`;
+      else if (entry.previousHash !== previous) problem = `Entry ${entry.sequence} does not link to the archived entry ${next - 1}.`;
+      else if (!verifiesAlone(entry, LEDGER_ID, keys)) problem = `Entry ${entry.sequence} does not verify: it was changed before it was copied.`;
+      if (problem) {
+        this.archiveProblem = problem;
+        return;
+      }
+      this.archive.push(entry);
+      this.archiveOriginal.push(entry);
+      previous = entry.hash;
+      next++;
+    }
+    this.archiveProblem = null;
+  }
+
+  /** The archive row an attack on the archive changes: the second application event that still has a payload. */
+  get archiveTarget(): number {
+    const rows = this.archive ?? [];
+    return rows.findIndex((e, i) => i > 0 && e.payloadJson !== null && !e.eventType.startsWith("provance."));
+  }
+
+  /** Someone changes a row of the archive database. */
+  tamperArchive(index = this.archiveTarget): void {
+    const e = this.archive?.[index];
+    if (!this.archive || !e?.payloadJson) return;
+    this.archive[index] = { ...e, payloadJson: mutated(e.payloadJson) };
+    this.archiveEdits[e.id] = ["payload"];
+    this.invalidate();
+  }
+
+  compareCopies(): void {
+    if (!this.archive) return;
+    this.stop();
+    this.verification = null;
+    this.comparison = compare(this.entries, this.archive, LEDGER_ID, keys);
+  }
+
+  // --- retention (0.2) ---------------------------------------------------------------------------------------
+
+  /** A ledger with an archive, four events recorded twelve days ago and three today. */
+  prepareRetention(): void {
+    const v2 = this.recordsRedactions;
+    this.reset();
+    this.recordsRedactions = v2;
+    this.enableArchive();
+    const start = Date.now() - 12 * DAY;
+    for (let i = 0; i < 7; i++) {
+      const p = this.nextPreset();
+      this.record(p.eventType, p.payload, i < 4 ? new Date(start + i * 7 * 60_000) : new Date(Date.now() - (7 - i) * 60_000));
+    }
+    this.selected = 0;
+  }
+
+  /** What one retention run does (docs/RETENTION.md). Nothing is removed unless every check passes. */
+  applyRetention(keepDays: number): void {
+    this.stop();
+    this.verification = null;
+    this.comparison = null;
+    const refuse = (text: string): void => {
+      this.retentionReport = { ok: false, text };
+    };
+    if (!verify(this.entries, LEDGER_ID, keys).valid) return refuse("Nothing removed: the main table does not verify, so the evidence stays where it is.");
+    const cutoff = Date.now() - keepDays * DAY;
+    const old = this.entries.filter((e) => Date.parse(e.timestamp) < cutoff);
+    const boundary = old.at(-1);
+    if (!boundary || boundary === this.entries[0]) return refuse(`Nothing removed: no entry is older than ${keepDays} days, apart from the first one kept.`);
+    if (!this.archive) return refuse("Nothing removed: there is no archive holding a copy.");
+    this.copyToArchive();
+    const before = this.entries.filter((e) => e.sequence < boundary.sequence);
+    const same = before.every((e) => JSON.stringify(this.archive!.find((a) => a.sequence === e.sequence)) === JSON.stringify(e));
+    if (!same) return refuse("Nothing removed: the archive does not hold an identical copy of the old entries.");
+
+    this.record(RETENTION_EVENT, retentionPayload(boundary));
+    this.entries = this.entries.filter((e) => e.sequence >= boundary.sequence);
+    this.original = this.original.filter((e) => e.sequence >= boundary.sequence);
+    this.retainedFrom = boundary.sequence;
+    this.saveCheckpoint();
+    this.selected = 0;
+    this.retentionReport = {
+      ok: true,
+      text: `Removed ${before.length} entries (1 to ${boundary.sequence - 1}). Entry ${boundary.sequence} stays as the first one, `
+        + `the retention record ${this.head!.sequence} names it, and a new checkpoint was saved.`,
+    };
     this.invalidate();
   }
 
@@ -124,10 +257,15 @@ export class Demo {
   changeAmount(index: number): void {
     const e = this.entries[index];
     if (!e?.payloadJson) return;
-    const payload = JSON.parse(e.payloadJson) as Record<string, Json>;
-    if (typeof payload.amount === "string") payload.amount = payload.amount.startsWith("4.") ? "49.90" : "4.90";
-    else payload.actorId = "someone-else";
-    this.editPayload(index, JSON.stringify(payload));
+    this.editPayload(index, mutated(e.payloadJson));
+  }
+
+  /** UPDATE ... SET payload = NULL: looks like an erasure, but without the record the library writes. */
+  nullPayload(index: number): void {
+    const e = this.entries[index];
+    if (!e || e.payloadJson === null) return;
+    this.entries[index] = { ...e, payloadJson: null };
+    this.mark(e.id, "nulled");
   }
 
   remove(index: number): void {
@@ -137,6 +275,10 @@ export class Demo {
     this.removed.push(e.sequence);
     this.selected = Math.max(0, Math.min(this.selected, this.entries.length - 1));
     this.invalidate();
+  }
+
+  removeFirst(count: number): void {
+    for (let i = 0; i < count && this.entries.length > 0; i++) this.remove(0);
   }
 
   removeLast(count: number): void {
@@ -195,6 +337,9 @@ export class Demo {
   /** Puts back the table as the application wrote it. */
   restore(): void {
     this.entries = this.original.map((e) => ({ ...e }));
+    if (this.archive) this.archive = this.archiveOriginal.map((e) => ({ ...e }));
+    this.archiveEdits = {};
+    this.retentionReport = null;
     const kept: Record<string, Edit[]> = {};
     for (const [id, list] of Object.entries(this.edits)) if (list.includes("redacted")) kept[id] = ["redacted"];
     this.edits = kept;
@@ -213,13 +358,24 @@ export class Demo {
     this.verification = null;
     this.selected = 0;
     this.next = 0;
+    this.archive = null;
+    this.archiveOriginal = [];
+    this.archiveEdits = {};
+    this.archiveProblem = null;
+    this.comparison = null;
+    this.retainedFrom = 1;
+    this.retentionReport = null;
   }
 
   // --- verification -------------------------------------------------------------------------------------------
 
   verify(withCheckpoint = false): void {
     this.stop();
-    const result = verify(this.entries, LEDGER_ID, keys, withCheckpoint ? this.checkpoint : null);
+    const result = verify(this.entries, LEDGER_ID, keys, {
+      checkpoint: withCheckpoint ? this.checkpoint : null,
+      acceptUnrecordedRedactions: !this.recordsRedactions,
+    });
+    this.comparison = null;
     const rows = result.reports.filter((r) => r.index >= 0).length;
     this.verification = { result, shown: 0, done: false, withCheckpoint };
     const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -259,7 +415,16 @@ export class Demo {
   private invalidate(): void {
     this.stop();
     this.verification = null;
+    this.comparison = null;
   }
+}
+
+/** The payload with its amount (or its actor) changed. */
+function mutated(payloadJson: string): string {
+  const payload = JSON.parse(payloadJson) as Record<string, Json>;
+  if (typeof payload.amount === "string") payload.amount = payload.amount.startsWith("4.") ? "49.90" : "4.90";
+  else payload.actorId = "someone-else";
+  return JSON.stringify(payload);
 }
 
 /** Twelve well separated hues. */

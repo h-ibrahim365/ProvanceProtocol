@@ -167,6 +167,7 @@ final class LedgerWriter implements Runnable {
                 }
                 LedgerEntry last = sealed.get(sealed.size() - 1);
                 head = new Head(last.sequence(), last.hash());
+                notifyAppended();
                 return;
             } catch (LedgerConcurrencyException e) {
                 failure = e;
@@ -238,6 +239,7 @@ final class LedgerWriter implements Runnable {
         }
 
         if (acknowledged > 0) {
+            notifyAppended();
             LOG.log(Level.INFO, "{0} entries were persisted despite the reported failure.", acknowledged);
             pending.subList(0, acknowledged).clear();
         }
@@ -276,6 +278,20 @@ final class LedgerWriter implements Runnable {
             previousHash = hash;
         }
         return sealed;
+    }
+
+    /** Called after each append, to wake the archive copy. */
+    volatile Runnable onAppended;
+
+    private void notifyAppended() {
+        Runnable listener = onAppended;
+        if (listener != null) {
+            try {
+                listener.run();
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "PROVANCE append listener failed.", e);
+            }
+        }
     }
 
     private Duration backoff(int failures) {

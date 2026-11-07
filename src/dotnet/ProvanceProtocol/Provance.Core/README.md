@@ -2,7 +2,7 @@
 
 Tamper-evident audit trail for .NET. Every entry is chained to the previous one with SHA-256 and signed,
 so an entry edited, deleted or reordered directly in the database is detected, and verification tells you
-exactly where.
+exactly where. [Live demo](https://provance.iamhakim.com).
 
 Audit tables can usually be edited by the application, its admins and anyone with database access.
 PROVANCE lets you prove to someone outside your team (an auditor, a customer, a partner) that the log was

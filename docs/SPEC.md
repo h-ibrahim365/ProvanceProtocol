@@ -95,7 +95,7 @@ genesisHash = hex(SHA256(UTF8("provance:genesis:v1:" + ledgerId)))
 ## 5. Verification
 
 Given the ledger id, the genesis hash and a way to check signatures, a verifier reads entries in ascending
-sequence and, for each entry, checks in this order:
+sequence and, for each entry, checks in this order (the [demo](https://provance.iamhakim.com/#try-verify) shows each check on each row):
 
 1. `sequence` equals the expected value (1, then previous + 1). Otherwise: gap.
 2. `v` is 1 and `ledgerId` is the expected ledger.
@@ -123,14 +123,14 @@ Since 0.2, an erasure is authorized by a redaction record, appended before the p
 entry, chained and signed, with `eventType` `"provance.redaction"` and the payload
 `{"entryId":"<id>","sequence":<n>}` (canonical JSON) naming the erased entry. A verifier reports every entry whose
 payload is missing without a redaction record naming its sequence and id: the payload was deleted directly in the
-database, not through the library. Someone with write access but without the signing key cannot create the record.
+database, not through the library. Someone with write access but without the signing key cannot create the record. Both cases can be tried in the [demo](https://provance.iamhakim.com/#try-redact).
 
 Ledgers erased by 0.1 libraries have no redaction records. Verifiers offer an explicit option to accept unrecorded
 redactions for them; with that option, a payload deleted in the database is counted as redacted, as in 0.1.
 
 ## 7. Checkpoints
 
-A checkpoint is a signed statement about the head of the ledger:
+A checkpoint is a signed statement about the head of the ledger ([demo](https://provance.iamhakim.com/#try-checkpoint)):
 
 | Field       | JSON type | Description |
 | :---------- | :-------- | :---------- |
@@ -163,7 +163,7 @@ reseals its pending entries on top of it. Timestamps are informational: they are
 ## 9. Retention
 
 An application may remove old entries from the store it writes to, provided a full copy is kept elsewhere
-(an archive). Before removing entries, it appends a retention record, an ordinary entry, chained and signed
+(an archive; [demo](https://provance.iamhakim.com/#try-retention)). Before removing entries, it appends a retention record, an ordinary entry, chained and signed
 like the others:
 
 * `eventType` is `"provance.retention"`. Event types starting with `provance.` are reserved for the records the

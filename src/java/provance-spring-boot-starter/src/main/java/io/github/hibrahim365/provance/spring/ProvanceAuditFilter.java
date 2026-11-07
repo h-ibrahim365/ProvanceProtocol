@@ -45,6 +45,11 @@ public final class ProvanceAuditFilter implements Filter, Ordered {
         this.order = order;
     }
 
+    /** The ledger that receives the entries. */
+    LedgerService ledger() {
+        return ledger;
+    }
+
     @Override
     public int getOrder() {
         return order;

@@ -15,6 +15,9 @@
   const keys = $derived(new HmacKeys({ [demo.keyId]: demo.secret }));
   const entry = $derived(demo.entries[demo.selected] ?? null);
   const previous = $derived(demo.selected > 0 ? (demo.entries[demo.selected - 1] ?? null) : null);
+  /** First row of a table shortened by retention: the entry it links to is only in the archive. */
+  const retainedStart = $derived(!!entry && demo.selected === 0 && entry.sequence > 1);
+  const nulled = $derived(!!entry && (demo.edits[entry.id] ?? []).includes("nulled"));
 
   const computed = $derived.by(() => {
     if (!entry) return null;
@@ -51,7 +54,14 @@
       <li class:focus={focus === "payload" || focus === "redact"}>
         <span class="what">Payload, as canonical JSON</span>
         {#if entry.payloadJson === null}
-          <p class="note">Erased. The entry keeps its payloadHash, so the chain does not change.</p>
+          {#if nulled && demo.recordsRedactions}
+            <p class="note">Removed directly in the database. The entry keeps its payloadHash, but no redaction record names it.</p>
+          {:else}
+            <p class="note">
+              Erased. The entry keeps its payloadHash, so the chain does not change.
+              {#if demo.recordsRedactions}A signed <code>provance.redaction</code> record, appended before the erasure, names it.{/if}
+            </p>
+          {/if}
         {:else}
           <code class="block">{entry.payloadJson}</code>
           <span class="op">SHA-256</span>
@@ -70,7 +80,10 @@
       <li class:focus={focus === "link"}>
         <span class="what">Link to the {entry.sequence === 1 ? "genesis hash" : `hash of entry ${entry.sequence - 1}`}</span>
         <span class="result">
-          {#if entry.previousHash === computed.expectedPrevious}
+          {#if retainedStart}
+            <HashChip hash={entry.previousHash} label="previousHash" />
+            <span class="vs">entry {entry.sequence - 1} is no longer in this table</span>
+          {:else if entry.previousHash === computed.expectedPrevious}
             <HashChip hash={entry.previousHash} label="previousHash" />
             <span class="vs">matches</span>
           {:else}
@@ -79,6 +92,16 @@
             <HashChip hash={computed.expectedPrevious} />
           {/if}
         </span>
+        {#if retainedStart}
+          <p class="note">
+            {#if demo.retainedFrom === entry.sequence}
+              Entries 1 to {entry.sequence - 1} were removed by retention and are kept in the archive. The signed
+              <code>provance.retention</code> record in this table names this entry and its hash, so the table may start here.
+            {:else}
+              Entries before {entry.sequence} were deleted, and no retention record names this entry.
+            {/if}
+          </p>
+        {/if}
       </li>
 
       <li class:focus={focus === "seal"}>

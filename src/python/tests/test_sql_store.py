@@ -58,9 +58,14 @@ def backend(request, tmp_path):
 
     make_store.table = table
     make_store.dialect = dialect
+    make_store.factory = factory
     yield make_store, execute
     if request.param == "postgresql":
         execute(f"DROP TABLE IF EXISTS {table}")
+
+
+def connection_factory_for(make_store):
+    return make_store.factory, make_store.dialect
 
 
 def open_ledger(store, **settings):
@@ -115,6 +120,23 @@ def test_redaction(backend):
     redacted = store.get_by_id(entries[0].id)
     assert redacted.is_redacted and redacted.hash == entries[0].hash
     assert execute(f"SELECT COUNT(*) FROM {make_store.table} WHERE redacted_at IS NOT NULL")[0][0] == 1
+
+
+def test_delete_before_and_an_archive_table_in_the_same_database(backend):
+    make_store, execute = backend
+    store = make_store()
+    archive = SqlLedgerStore(*connection_factory_for(make_store), table=make_store.table + "_archive")
+    try:
+        with open_ledger(store, archive=archive, retention_require_archive=True) as ledger:
+            for i in range(4):
+                ledger.add_entry("EVENT", {"n": i})
+            assert ledger.compare_with_archive().identical
+        assert store.delete_before(3) == 2
+        assert [e.sequence for e in store.read(1)] == [3, 4]
+        assert [e.sequence for e in archive.read(1)] == [1, 2, 3, 4]
+    finally:
+        if make_store.dialect != "sqlite":
+            execute(f"DROP TABLE IF EXISTS {make_store.table}_archive")
 
 
 def test_ledger_on_sql_two_instances_and_tampering(backend):

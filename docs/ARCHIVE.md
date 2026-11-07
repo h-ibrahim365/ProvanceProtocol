@@ -1,8 +1,10 @@
-# Archive copy and field-level comparison (.NET 0.2)
+# Archive copy and field-level comparison (0.2)
 
 Verification tells you that entry 42 was changed. It cannot tell you what it said before, because the ledger only
 keeps a hash of it. An archive copy fixes that: every entry is also written to a second store, and comparing the
 two copies shows, field by field, the original value and the current one.
+
+Try it in the [demo](https://provance.iamhakim.com/#try-archive): change a row in either copy, then compare.
 
 ## Setting it up
 
@@ -14,6 +16,32 @@ builder.Services
 ```
 
 Any `ILedgerStore` works as an archive: `UseArchive(store)`.
+
+Java:
+
+```java
+ProvanceLedger ledger = ProvanceLedger.builder()
+        .ledgerId("orders-api-prod")
+        .secretKey(System.getenv("PROVANCE_SECRET_KEY"))
+        .store(new JdbcLedgerStore(appDataSource))
+        .archive(new JdbcLedgerStore(archiveDataSource, archiveTable))   // table provance_archive
+        .build();
+```
+
+With Spring Boot, declare a `ProvanceArchive` bean wrapping the archive store, or set `provance.archive.enabled=true`
+for a table `provance_archive` on the application `DataSource`.
+
+Python:
+
+```python
+ledger = ProvanceLedger(ledger_id="orders-api-prod", secret_key=os.environ["PROVANCE_SECRET_KEY"],
+                        store=SqlLedgerStore.from_url(app_url),
+                        archive=SqlLedgerStore.from_url(archive_url, table="provance_archive"))
+```
+
+The names below are the .NET ones. Java uses the same names in camel case (`compareWithArchive()`,
+`archiveStatus()`, `DifferenceKind.CHANGED`), Python in snake case (`compare_with_archive()`, `archive_status()`,
+`DifferenceKind.CHANGED`).
 
 The copy runs in the background, after each write and every `ArchiveInterval` (5 seconds by default). It never slows
 down `AddEntryAsync`. If the archive is unreachable, entries wait in the primary store and are copied when it comes
@@ -82,8 +110,17 @@ var comparer = new LedgerComparer(signer, "orders-api-prod");
 var comparison = await comparer.CompareAsync(primaryStore, export);
 ```
 
-`LedgerJsonLines.WriteAsync(store, stream)` writes an export in the format shared by the three libraries (the
-Python `provance export` command writes the same).
+`LedgerJsonLines.WriteAsync(store, stream)` writes an export in the format shared by the three libraries (Java:
+`LedgerJsonLines.write(store, writer)`; the Python `provance export` command writes the same).
+
+From the command line (Python package), between two databases or two exports:
+
+```bash
+provance diff postgresql://auditor@db/app postgresql://auditor@archive/audit --archive-table provance_archive --ledger-id orders-api-prod
+provance diff primary.jsonl archive.jsonl --ledger-id orders-api-prod --json
+```
+
+The exit code is 0 when the copies are identical, 1 otherwise.
 
 ## Erasure requests
 

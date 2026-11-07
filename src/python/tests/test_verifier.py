@@ -134,10 +134,20 @@ def test_entry_from_another_ledger():
     assert verify(entries).failure is VerificationFailure.LEDGER_ID_MISMATCH
 
 
-def test_redacted_payload_keeps_the_chain_valid():
+def test_a_payload_erased_without_a_record_is_reported():
+    entries = seal(3)
+    entries[1] = entries[1].with_changes(payload_json=None)  # UPDATE ... SET payload = NULL
+    result = verify(entries)
+    assert result.failure is VerificationFailure.UNRECORDED_REDACTION
+    assert result.failed_at_sequence == 2
+    assert result.failed_entry_id == entries[1].id
+
+
+def test_payloads_erased_with_0_1_are_accepted_on_request():
     entries = seal(3)
     entries[1] = entries[1].with_changes(payload_json=None)
-    result = verify(entries)
+    result = LedgerVerifier(ListSource(entries), HmacVerifier({"k1": SECRET}), LEDGER_ID).verify(
+        accept_unrecorded_redactions=True)
     assert result.valid
     assert result.redacted_payloads == 1
 

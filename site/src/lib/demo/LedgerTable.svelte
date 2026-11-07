@@ -67,6 +67,17 @@
     <p class="empty">The table is empty. Record an event to write the first entry.</p>
   {/if}
 
+  {#if (demo.entries[0]?.sequence ?? 1) > 1}
+    {@const first = demo.entries[0]!.sequence}
+    <p class="gap" class:retained={demo.retainedFrom === first}>
+      {#if demo.retainedFrom === first}
+        Entries 1 to {first - 1} were removed by retention. They are kept in the archive.
+      {:else}
+        Entries 1 to {first - 1} are no longer in the table.
+      {/if}
+    </p>
+  {/if}
+
   {#each demo.entries as entry, index (entry.id)}
     {@const state = rowState(index)}
     {@const edits = demo.edits[entry.id] ?? []}
@@ -77,6 +88,7 @@
         <span class="c-seq">{entry.sequence}</span>
         <span class="c-event">
           <span class="event">{entry.eventType}</span>
+          {#if entry.eventType.startsWith("provance.")}<span class="lib">written by the library</span>{/if}
           <span class="time">{time(entry.timestamp)}</span>
         </span>
         <span class="c-payload mono">
@@ -235,6 +247,23 @@
     font-size: var(--t-s);
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .lib {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--link);
+  }
+
+  .gap {
+    padding: 0.5rem 0.9rem 0.5rem 3.5rem;
+    font-size: var(--t-xs);
+    color: var(--red);
+    border-bottom: 1px dashed var(--rule-strong);
+  }
+
+  .gap.retained {
+    color: var(--ink-soft);
   }
 
   .time {

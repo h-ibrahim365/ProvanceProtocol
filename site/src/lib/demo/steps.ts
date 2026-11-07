@@ -2,7 +2,7 @@
 
 import type { Demo } from "./demo.svelte";
 
-export type Focus = "payload" | "link" | "seal" | "verify" | "checkpoint" | "redact" | "code";
+export type Focus = "payload" | "link" | "seal" | "verify" | "checkpoint" | "redact" | "archive" | "retention" | "code";
 
 export interface Action {
   label: string;
@@ -25,7 +25,7 @@ export interface Step {
   rowTools?: boolean;
 }
 
-export type CodeSample = "record" | "verify" | "checkpoint" | "redact" | "setup";
+export type CodeSample = "record" | "verify" | "checkpoint" | "redact" | "setup" | "archive" | "retention";
 
 export const STEPS_V1: Step[] = [
   {
@@ -164,6 +164,108 @@ export const STEPS_V1: Step[] = [
     body: [
       "That is the whole idea. The libraries do the same thing against your own database, with several application instances writing to one ledger, retries, and automatic checkpoints.",
       "Same format in .NET, Java and Python: a ledger written in one can be verified in the others.",
+    ],
+    actions: [],
+    enter: (d) => d.ensure(1),
+  },
+];
+
+const v1 = (id: string): Step => STEPS_V1.find((s) => s.id === id)!;
+
+/** 0.2: the same first steps, then recorded erasures, the archive copy with its comparison, and retention. */
+export const STEPS_V2: Step[] = [
+  v1("record"),
+  v1("chain"),
+  v1("seal"),
+  v1("tamper"),
+  v1("verify"),
+  v1("checkpoint"),
+  {
+    id: "redact",
+    title: "Erase personal data",
+    focus: "redact",
+    code: "redact",
+    body: [
+      "People can ask for their personal data to be erased (GDPR). Only the payloadHash is part of the chain, so the payload itself can be removed and the ledger still verifies.",
+      "From 0.2, the library first appends a signed provance.redaction record naming the erased entry. Someone who sets a payload to NULL directly in the database writes no such record, and verification reports it.",
+    ],
+    actions: [
+      {
+        label: "Erase the payload of #2",
+        run: (d) => d.redact(1),
+        disabled: (d) => !d.entries[1] || d.entries[1].payloadJson === null,
+      },
+      {
+        label: "Set the payload of #3 to NULL in the database",
+        variant: "danger",
+        run: (d) => d.nullPayload(2),
+        disabled: (d) => !d.entries[2] || d.entries[2].payloadJson === null,
+      },
+      { label: "Run verification", variant: "quiet", run: (d) => d.verify() },
+      { label: "Undo my changes", variant: "quiet", run: (d) => d.restore(), disabled: (d) => !d.tampered },
+    ],
+    enter: (d) => {
+      d.restore();
+      d.ensure(3);
+    },
+  },
+  {
+    id: "archive",
+    title: "Keep a copy elsewhere",
+    focus: "archive",
+    code: "archive",
+    rowTools: true,
+    body: [
+      "Verification says that an entry was changed, not what it said before: the ledger only keeps a hash of it.",
+      "From 0.2, every entry is also copied, in the background, to a second database where the application can only insert. Comparing the two copies gives, field by field, the original value and the current one.",
+    ],
+    note: "Each entry is checked before it is copied, so a row changed in the main table before its copy is not propagated.",
+    actions: [
+      { label: "Lower the refund on #1", variant: "danger", run: (d) => d.changeAmount(0), disabled: (d) => !d.entries[0]?.payloadJson },
+      { label: "Change an entry in the archive", variant: "danger", run: (d) => d.tamperArchive(), disabled: (d) => d.archiveTarget < 0 },
+      { label: "Compare the two copies", run: (d) => d.compareCopies() },
+      { label: "Run verification", variant: "quiet", run: (d) => d.verify() },
+      { label: "Record an event", variant: "quiet", run: (d) => d.recordNext() },
+      { label: "Undo my changes", variant: "quiet", run: (d) => d.restore(), disabled: (d) => !d.tampered },
+    ],
+    enter: (d) => {
+      d.restore();
+      d.ensure(4);
+      d.enableArchive();
+    },
+  },
+  {
+    id: "retention",
+    title: "Keep the main table small",
+    focus: "retention",
+    code: "retention",
+    body: [
+      "A ledger only grows. Retention removes old entries from the main table once the archive holds an identical copy of them, and the ledger still verifies.",
+      "Before deleting, the library appends a signed provance.retention record naming the first entry it keeps. Deleting the first rows without that record, and so without the key, is still detected.",
+    ],
+    note: "Here the first four events were recorded twelve days ago, and the setting keeps seven days.",
+    actions: [
+      { label: "Remove entries older than 7 days", run: (d) => d.applyRetention(7), disabled: (d) => d.retainedFrom > 1 },
+      { label: "Run verification", variant: "quiet", run: (d) => d.verify() },
+      { label: "Compare the two copies", variant: "quiet", run: (d) => d.compareCopies() },
+      {
+        label: "Instead, delete #1 and #2 directly",
+        variant: "danger",
+        run: (d) => d.removeFirst(2),
+        disabled: (d) => d.retainedFrom > 1 || d.entries[0]?.sequence !== 1,
+      },
+      { label: "Start again", variant: "quiet", run: (d) => d.prepareRetention() },
+    ],
+    enter: (d) => d.prepareRetention(),
+  },
+  {
+    id: "use",
+    title: "Use it in your application",
+    focus: "code",
+    code: "setup",
+    body: [
+      "The libraries do all of this against your own database: several application instances writing to one ledger, retries, automatic checkpoints, the archive copy and retention.",
+      "One application can also hold several ledgers, for example one per tenant, or one for audit and one for billing, each with its own key, table and archive. Same format in .NET, Java and Python.",
     ],
     actions: [],
     enter: (d) => d.ensure(1),

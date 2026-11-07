@@ -100,6 +100,13 @@ class InMemoryLedgerStore:
                     return True
             return False
 
+    def delete_before(self, sequence: int) -> int:
+        """Deletes every entry with a lower sequence (retention). Returns how many were deleted."""
+        with self._lock:
+            before = len(self._entries)
+            self._entries = [e for e in self._entries if e.sequence >= sequence]
+            return before - len(self._entries)
+
     # Test helpers: edit rows the way an attacker with database access would.
 
     def tamper(self, sequence: int, change: Callable[[LedgerEntry], LedgerEntry]) -> None:
@@ -358,6 +365,26 @@ class SqlLedgerStore:
         except Exception as e:
             _rollback_quietly(connection)
             raise LedgerStoreError(f"PROVANCE SQL: redacting a payload failed: {e}") from e
+        finally:
+            connection.close()
+
+    def delete_before(self, sequence: int) -> int:
+        """Deletes every entry with a lower sequence (retention). Needs ``DELETE`` on the table."""
+        self._ensure_initialized()
+        query = f"DELETE FROM {self.table} WHERE seq < {self.dialect.params(1)}"
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            try:
+                cursor.execute(query, (sequence,))
+                deleted = cursor.rowcount
+            finally:
+                cursor.close()
+            connection.commit()
+            return max(deleted, 0)
+        except Exception as e:
+            _rollback_quietly(connection)
+            raise LedgerStoreError(f"PROVANCE SQL: deleting old entries failed: {e}") from e
         finally:
             connection.close()
 

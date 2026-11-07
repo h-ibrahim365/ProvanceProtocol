@@ -20,6 +20,7 @@ public class ProvanceProperties extends ProvanceOptions {
     private final Jdbc jdbc = new Jdbc();
     private final Http http = new Http();
     private final Checkpoints checkpoints = new Checkpoints();
+    private final Archive archive = new Archive();
 
     /** JDBC store settings ({@code provance.jdbc.*}). */
     public Jdbc getJdbc() {
@@ -36,8 +37,40 @@ public class ProvanceProperties extends ProvanceOptions {
         return checkpoints;
     }
 
+    /** Archive copy ({@code provance.archive.*}). */
+    public Archive getArchive() {
+        return archive;
+    }
+
     /** JDBC store settings: table name, schema, automatic creation, read batch size, dialect. */
     public static class Jdbc extends JdbcStoreOptions {
+    }
+
+    /**
+     * Archive copy on the application DataSource. The table settings are the same as {@code provance.jdbc.*}, under
+     * {@code provance.archive.*}; the table name defaults to {@code provance_archive}. A {@link ProvanceArchive} bean
+     * replaces it (for example to use another database and an account that can only insert).
+     */
+    public static class Archive extends JdbcStoreOptions {
+
+        /** Default archive table. */
+        public static final String DEFAULT_TABLE_NAME = "provance_archive";
+
+        private boolean enabled;
+
+        public Archive() {
+            setTableName(DEFAULT_TABLE_NAME);
+        }
+
+        /** Copy every entry to the archive table. Default {@code false}. */
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        /** @see #isEnabled() */
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 
     /** HTTP auditing settings. Privacy sensitive fields are off by default. */
@@ -51,6 +84,7 @@ public class ProvanceProperties extends ProvanceOptions {
         private boolean includeUserAgent;
         private List<String> excludedPaths = new ArrayList<>(List.of("/actuator", "/health", "/healthz", "/metrics", "/favicon.ico"));
         private int order;
+        private String ledgerBean;
 
         /** Record one ledger entry per HTTP request. Default {@code false}. */
         public boolean isEnabled() {
@@ -133,6 +167,19 @@ public class ProvanceProperties extends ProvanceOptions {
         /** @see #getOrder() */
         public void setOrder(int order) {
             this.order = order;
+        }
+
+        /**
+         * Name of the ledger bean that receives the HTTP entries, when the application declares several ledgers.
+         * Unset by default: the single (or {@code @Primary}) ledger is used.
+         */
+        public String getLedgerBean() {
+            return ledgerBean;
+        }
+
+        /** @see #getLedgerBean() */
+        public void setLedgerBean(String ledgerBean) {
+            this.ledgerBean = ledgerBean == null || ledgerBean.isBlank() ? null : ledgerBean;
         }
     }
 

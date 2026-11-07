@@ -7,10 +7,10 @@
   const use = $derived(step.id === "use");
 </script>
 
-{#if step.code}
+{#if step.code && tour.version.code[step.code]}
   <details class="sample" open={media.wide || use}>
-    <summary><svg class="chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" /></svg>{use ? "Install, then record events" : "The same in your application"}</summary>
-    <CodeSample samples={tour.version.code[step.code]} install={use} />
+    <summary><svg class="chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" /></svg>{use ? (step.code === "setup" ? "Install, then set up the ledger" : "Install, then record events") : "The same in your application"}</summary>
+    <CodeSample samples={tour.version.code[step.code]!} install={use} />
   </details>
 {/if}
 

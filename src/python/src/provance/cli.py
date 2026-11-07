@@ -1,4 +1,4 @@
-"""Command line: ``provance verify`` and ``provance export``.
+"""Command line: ``provance verify``, ``provance export`` and ``provance diff``.
 
 Exit codes: 0 the ledger is valid, 1 verification failed, 2 usage or connection error.
 """
@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
+from .comparison import LedgerComparer
 from .models import LedgerCheckpoint
 from .signing import HmacVerifier
 from .stores import DEFAULT_TABLE, JsonLinesReader, SqlLedgerReader, connect, write_json_lines
@@ -60,8 +61,29 @@ def _parser() -> argparse.ArgumentParser:
     v.add_argument("--checkpoint", metavar="PATH",
                    help="trusted checkpoint: a checkpoint JSON file, or a checkpoint directory (latest one is used)")
     v.add_argument("--from-checkpoint", action="store_true", help="verify only from the checkpoint onward")
+    v.add_argument("--accept-unrecorded-redactions", action="store_true",
+                   help="accept payloads erased by 0.1 libraries, which wrote no redaction record")
     v.add_argument("--json", action="store_true", help="print the result as JSON")
     v.set_defaults(handler=_verify)
+
+    d = sub.add_parser("diff", help="compare two copies of a ledger field by field (database or JSON Lines export)",
+                       description="Compare the primary copy with a second copy (the archive, or an export) and show, "
+                                   "for every changed entry, which fields differ and their original values.")
+    d.add_argument("primary", help="primary copy: a database URL or a JSON Lines file")
+    d.add_argument("archive", help="second copy: a database URL or a JSON Lines file")
+    d.add_argument("--table", default=DEFAULT_TABLE, help=f"ledger table of a primary database (default: {DEFAULT_TABLE})")
+    d.add_argument("--archive-table", default="provance_archive", help="table of an archive database (default: provance_archive)")
+    d.add_argument("--schema", help="schema of the tables")
+    d.add_argument("--ledger-id", required=True, help="ledger id configured in the application")
+    d.add_argument("--key-id", default="k1", help="id of the current HMAC key (default: k1)")
+    d.add_argument("--key-env", default=DEFAULT_KEY_ENV, metavar="VAR",
+                   help=f"environment variable holding the HMAC secret (default: {DEFAULT_KEY_ENV})")
+    d.add_argument("--key-file", metavar="PATH", help="file holding the HMAC secret, instead of --key-env")
+    d.add_argument("--retired-key", action="append", default=[], metavar="ID=VAR",
+                   help="retired key: key id and the environment variable holding its secret (repeatable)")
+    d.add_argument("--max", dest="max_differences", type=int, default=1000, help="list at most this many differences")
+    d.add_argument("--json", action="store_true", help="print the result as JSON")
+    d.set_defaults(handler=_diff)
 
     e = sub.add_parser("export", help="export a ledger table to JSON Lines (for an offline audit)")
     _add_db(e, required=True)
@@ -135,7 +157,8 @@ def _verify(args: argparse.Namespace) -> int:
     source, connection = _open_source(args)
     try:
         verifier = LedgerVerifier(source, HmacVerifier(keys), args.ledger_id, args.genesis_hash)
-        result = verifier.verify(checkpoint=checkpoint, start_from_checkpoint=args.from_checkpoint)
+        result = verifier.verify(checkpoint=checkpoint, start_from_checkpoint=args.from_checkpoint,
+                                 accept_unrecorded_redactions=args.accept_unrecorded_redactions)
     finally:
         if connection is not None:
             connection.close()
@@ -152,6 +175,44 @@ def _verify(args: argparse.Namespace) -> int:
         if result.valid and result.last_hash:
             print(f"Head: sequence {result.last_sequence}, hash {result.last_hash}")
     return 0 if result.valid else 1
+
+
+def _open_copy(location: str, table: str, schema: str | None):
+    if "://" in location:
+        connection, dialect = connect(location)
+        return SqlLedgerReader(connection, dialect, table=table, schema=schema), connection
+    if not Path(location).is_file():
+        raise UsageError(f"{location} is neither a database URL nor a file")
+    return JsonLinesReader(location), None
+
+
+def _diff(args: argparse.Namespace) -> int:
+    keys = _keys(args)
+    primary, primary_connection = _open_copy(args.primary, args.table, args.schema)
+    archive, archive_connection = None, None
+    try:
+        archive, archive_connection = _open_copy(args.archive, args.archive_table, args.schema)
+        comparison = LedgerComparer(HmacVerifier(keys), args.ledger_id).compare(primary, archive, args.max_differences)
+    finally:
+        for connection in (primary_connection, archive_connection):
+            if connection is not None:
+                connection.close()
+    if args.json:
+        print(json.dumps({
+            "identical": comparison.identical,
+            "compared": comparison.compared,
+            "removedByRetention": comparison.removed_by_retention,
+            "notYetCopied": comparison.not_yet_copied,
+            "differencesTruncated": comparison.differences_truncated,
+            "differences": [{
+                "sequence": d.sequence, "throughSequence": d.through_sequence, "kind": d.kind.value,
+                "original": d.original.value if d.original else None, "eventType": d.event_type,
+                "fields": [{"field": f.field, "archive": f.archive_value, "primary": f.primary_value} for f in d.fields],
+            } for d in comparison.differences],
+        }, indent=2))
+    else:
+        print(comparison.describe(), end="")
+    return 0 if comparison.identical else 1
 
 
 def _export(args: argparse.Namespace) -> int:

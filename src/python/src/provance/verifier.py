@@ -15,6 +15,7 @@ from .format import (
     sha256_hex,
 )
 from .models import LedgerCheckpoint, LedgerEntry
+from .records import REDACTION_EVENT, RETENTION_EVENT, parse_redaction, parse_retention
 from .signing import SignatureCheck, SignatureVerifier
 
 
@@ -36,6 +37,8 @@ class VerificationFailure(enum.Enum):
     """The trusted checkpoint is invalid, or the ledger does not contain the entry it describes."""
     TRUNCATED = "truncated"
     """The ledger ends before the sequence of the trusted checkpoint."""
+    UNRECORDED_REDACTION = "unrecorded_redaction"
+    """A payload is missing without a redaction record: it was erased in the database, not through the library."""
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,8 @@ class VerificationResult:
     redacted_payloads: int
     last_sequence: int
     last_hash: str | None
+    first_sequence: int = 0
+    """First sequence read: 1, or later when older entries were removed by retention (0 when none)."""
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -86,14 +91,19 @@ class LedgerVerifier:
         checkpoint: LedgerCheckpoint | None = None,
         start_from_checkpoint: bool = False,
         raise_on_failure: bool = False,
+        accept_unrecorded_redactions: bool = False,
     ) -> VerificationResult:
         """Verifies the chain.
 
         With a ``checkpoint`` obtained from trusted storage, the ledger must contain that exact entry: this is what
         detects removed entries at the end and full rewrites. ``start_from_checkpoint`` verifies only from the
         checkpoint onward (incremental verification).
+
+        A missing payload must be authorized by a redaction record (written by :meth:`ProvanceLedger.redact_payload`
+        since 0.2). ``accept_unrecorded_redactions`` accepts payloads erased with 0.1, which wrote no such record; with
+        it, a payload deleted directly in the database is not detected.
         """
-        result = self._verify(checkpoint, start_from_checkpoint)
+        result = self._verify(checkpoint, start_from_checkpoint, accept_unrecorded_redactions)
         if raise_on_failure and not result.valid:
             raise LedgerTamperedError(result)
         return result
@@ -113,7 +123,8 @@ class LedgerVerifier:
             return f"Checkpoint is signed with unknown key '{checkpoint.key_id}'."
         return "Checkpoint signature is not valid."
 
-    def _verify(self, checkpoint: LedgerCheckpoint | None, start_from_checkpoint: bool) -> VerificationResult:
+    def _verify(self, checkpoint: LedgerCheckpoint | None, start_from_checkpoint: bool,
+                accept_unrecorded_redactions: bool = False) -> VerificationResult:
         if checkpoint is not None:
             problem = self.check_checkpoint(checkpoint)
             if problem is not None:
@@ -125,11 +136,24 @@ class LedgerVerifier:
         verified = redacted = last_sequence = 0
         last_hash: str | None = None
         checkpoint_seen = False
+        # Retention (SPEC section 9): a ledger starting after sequence 1 needs a retention record for its first entry.
+        first_sequence = 0
+        first_hash: str | None = None
+        start_needs_record = start_vouched = False
+        # Redaction (SPEC section 6): every erased payload needs a redaction record naming it.
+        erased: dict[int, str] = {}
+        authorized: set[tuple[int, str]] = set()
 
         def fail(failure: VerificationFailure, message: str, entry: LedgerEntry | None, at: int | None = None) -> VerificationResult:
-            return _fail(failure, message, entry, verified, redacted, last_sequence, last_hash, at)
+            result = _fail(failure, message, entry, verified, redacted, last_sequence, last_hash, at)
+            return VerificationResult(**{**result.__dict__, "first_sequence": first_sequence})
 
         for entry in self.source.read(expected_sequence):
+            if verified == 0 and not from_checkpoint and entry.sequence > expected_sequence:
+                expected_sequence = entry.sequence
+                expected_previous = None
+                start_needs_record = True
+
             if entry.sequence != expected_sequence:
                 what = "is missing" if entry.sequence > expected_sequence else "appears more than once or out of order"
                 return fail(VerificationFailure.SEQUENCE_GAP,
@@ -148,6 +172,8 @@ class LedgerVerifier:
 
             if entry.payload_json is None:
                 redacted += 1
+                if not accept_unrecorded_redactions and (entry.sequence, entry.id) not in authorized:
+                    erased[entry.sequence] = entry.id
             elif sha256_hex(entry.payload_json) != entry.payload_hash:
                 return fail(VerificationFailure.PAYLOAD_HASH_MISMATCH, "Payload does not match PayloadHash.", entry)
 
@@ -166,6 +192,21 @@ class LedgerVerifier:
             if check is not SignatureCheck.VALID:
                 return fail(VerificationFailure.INVALID_SIGNATURE, "Signature is not valid.", entry)
 
+            if verified == 0:
+                first_sequence, first_hash = entry.sequence, entry.hash
+
+            if entry.event_type == REDACTION_EVENT:
+                named = parse_redaction(entry.payload_json)
+                if named is not None:
+                    authorized.add(named)
+                    if erased.get(named[0]) == named[1]:
+                        del erased[named[0]]
+
+            if start_needs_record and not start_vouched and entry.event_type == RETENTION_EVENT:
+                kept = parse_retention(entry.payload_json)
+                if kept is not None and kept == (first_sequence, first_hash):
+                    start_vouched = True
+
             if checkpoint is not None and entry.sequence == checkpoint.sequence:
                 if entry.hash != checkpoint.hash:
                     return fail(VerificationFailure.CHECKPOINT_MISMATCH,
@@ -179,15 +220,42 @@ class LedgerVerifier:
             expected_previous = entry.hash
             expected_sequence += 1
 
+        if start_needs_record and not start_vouched:
+            return fail(VerificationFailure.SEQUENCE_GAP,
+                        f"Entries 1 to {first_sequence - 1} are missing, and no retention record in the ledger accounts "
+                        "for their removal.", None, 1)
+
+        if erased:
+            sequence = min(erased)
+            others = f" {len(erased) - 1} other entries are in the same case." if len(erased) > 1 else ""
+            result = fail(VerificationFailure.UNRECORDED_REDACTION,
+                          f"Entry {sequence} ({erased[sequence]}): the payload was removed without a redaction record, "
+                          "so it was erased directly in the database, not through redact_payload." + others, None, sequence)
+            return VerificationResult(**{**result.__dict__, "failed_entry_id": erased[sequence]})
+
+        if checkpoint is not None and not checkpoint_seen and verified > 0 and checkpoint.sequence < first_sequence:
+            return fail(VerificationFailure.CHECKPOINT_MISMATCH,
+                        f"The trusted checkpoint references sequence {checkpoint.sequence}, which was removed by "
+                        f"retention (the ledger now starts at {first_sequence}). Use a newer checkpoint.", None,
+                        checkpoint.sequence)
+
         if checkpoint is not None and not checkpoint_seen:
             return fail(VerificationFailure.TRUNCATED,
                         f"The ledger ends at sequence {last_sequence} but the trusted checkpoint references sequence "
                         f"{checkpoint.sequence}.", None, last_sequence + 1)
 
-        message = "Ledger is empty." if verified == 0 else f"{verified} entries verified up to sequence {last_sequence}."
+        if verified == 0:
+            message = "Ledger is empty."
+        elif first_sequence > 1:
+            message = f"{verified} entries verified, from sequence {first_sequence} to {last_sequence}."
+        else:
+            message = f"{verified} entries verified up to sequence {last_sequence}."
+        if start_needs_record:
+            message += f" Entries before {first_sequence} were removed by retention."
         if checkpoint is None and verified > 0:
             message += " Without a trusted checkpoint, removal of the last entries cannot be detected."
-        return VerificationResult(True, VerificationFailure.NONE, message, None, None, verified, redacted, last_sequence, last_hash)
+        return VerificationResult(True, VerificationFailure.NONE, message, None, None, verified, redacted, last_sequence,
+                                  last_hash, first_sequence)
 
     def _check_signature(self, key_id: str, hex_digest: str, hex_signature: str) -> SignatureCheck:
         if not is_lower_hex(hex_signature) or not is_lower_hex(hex_digest, 64):

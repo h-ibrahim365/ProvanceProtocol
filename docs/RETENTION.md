@@ -1,7 +1,10 @@
-# Retention (.NET 0.2)
+# Retention (0.2)
 
 A ledger is append only, so it grows forever. Retention keeps the primary store small (for example the last
 7 days) while the archive keeps everything, and both stay verifiable.
+
+Try it in the [demo](https://provance.iamhakim.com/#try-retention): apply retention, then verify, or delete the first rows yourself and
+see verification catch it.
 
 ## Setting it up
 
@@ -20,6 +23,15 @@ once a day, and about a minute after each start. Or run it yourself, for example
 ```csharp
 LedgerRetentionResult result = await ledger.ApplyRetentionAsync(TimeSpan.FromDays(7));
 ```
+
+| | Automatic | On demand |
+| :-- | :-- | :-- |
+| .NET | `Retention:KeepFor`, `Retention:Interval`, `Retention:RequireArchive` | `ApplyRetentionAsync(keepFor)` |
+| Java | `setRetentionKeepFor`, `setRetentionInterval`, `setRetentionRequireArchive` (Spring: `provance.retention-keep-for`, ...) | `applyRetention(keepFor)` |
+| Python | `retention_keep_for`, `retention_interval`, `retention_require_archive` | `apply_retention(keep_for)` |
+
+The store must support deleting entries: the in-memory stores, the Entity Framework Core store, `JdbcLedgerStore`
+and `SqlLedgerStore` do (`IPrunableLedgerStore`, `PrunableLedgerStore`, `delete_before`).
 
 ## What one run does
 

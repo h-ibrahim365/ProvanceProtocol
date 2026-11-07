@@ -34,5 +34,8 @@ public enum VerificationFailure {
     CHECKPOINT_MISMATCH,
 
     /** The ledger ends before the sequence of the trusted checkpoint: entries were removed from the end. */
-    TRUNCATED
+    TRUNCATED,
+
+    /** A payload is missing without a redaction record: it was erased in the database, not through the library. */
+    UNRECORDED_REDACTION
 }

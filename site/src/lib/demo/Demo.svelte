@@ -1,5 +1,7 @@
 <script lang="ts">
+  import ArchiveTable from "./ArchiveTable.svelte";
   import CheckpointVault from "./CheckpointVault.svelte";
+  import CompareResult from "./CompareResult.svelte";
   import Inspector from "./Inspector.svelte";
   import LedgerTable from "./LedgerTable.svelte";
   import StepCode from "./StepCode.svelte";
@@ -26,10 +28,14 @@
       <p class="ledger">Ledger <code>{demo.ledgerId}</code>, key <code>{demo.keyId}</code></p>
     </div>
     <VerifyResult {demo} />
+    <CompareResult {demo} />
     {#if tour.step.focus === "checkpoint" || demo.checkpoint}
       <CheckpointVault {demo} />
     {/if}
     <LedgerTable {demo} tools={tour.step.rowTools ?? false} />
+    {#if demo.archive}
+      <ArchiveTable {demo} />
+    {/if}
     <Inspector {demo} focus={tour.step.focus} />
   </div>
 </div>

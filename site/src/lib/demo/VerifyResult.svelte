@@ -6,6 +6,9 @@
 
   const v = $derived(demo.verification);
   const failure = $derived(v?.done && v.result.failure ? explainFailure(v.result.failure, v.result.failedAtSequence) : null);
+  /** Failures found after reading every entry: an erasure without its record, or a start without a retention record. */
+  const wholeTable = $derived(v?.result.failure === "unrecorded_redaction"
+    || (v?.result.failure === "sequence_gap" && v.result.failedAtSequence === 1));
   const hidden = $derived(v?.done && v.result.valid && !v.withCheckpoint ? hiddenTruncation(demo) : []);
 
   let box = $state<HTMLElement>();
@@ -30,7 +33,11 @@
       <p class="title">{failure.title}</p>
       <p class="detail">{failure.detail}</p>
       <p class="meta">
-        {v.result.entriesVerified} {v.result.entriesVerified === 1 ? "entry" : "entries"} verified before it.
+        {#if wholeTable}
+          Each entry checks out on its own: this only shows once the whole table has been read.
+        {:else}
+          {v.result.entriesVerified} {v.result.entriesVerified === 1 ? "entry" : "entries"} verified before it.
+        {/if}
         {#if v.withCheckpoint}Checked against the checkpoint.{/if}
       </p>
     </div>
@@ -39,7 +46,10 @@
       <p class="verdict">Valid</p>
       <p class="title">{v.result.message}</p>
       {#if v.result.redacted > 0}
-        <p class="detail">{v.result.redacted} erased {v.result.redacted === 1 ? "payload" : "payloads"}: the entry and its hash remain, so the chain still holds.</p>
+        <p class="detail">
+          {v.result.redacted} erased {v.result.redacted === 1 ? "payload" : "payloads"}: the entry and its hash remain, so the chain still holds.
+          {#if demo.recordsRedactions}Each erasure is named by a signed redaction record.{/if}
+        </p>
       {/if}
       {#if hidden.length > 0}
         <p class="detail">

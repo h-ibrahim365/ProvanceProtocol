@@ -29,6 +29,10 @@ public class ProvanceOptions {
     private int maxConflictRetries = 100;
     private Duration checkpointInterval = Duration.ofMinutes(5);
     private Duration shutdownTimeout = Duration.ofSeconds(30);
+    private Duration archiveInterval = Duration.ofSeconds(5);
+    private Duration retentionKeepFor;
+    private Duration retentionInterval = Duration.ofHours(24);
+    private boolean retentionRequireArchive = true;
 
     /**
      * Required. Stable identifier of the ledger, for example {@code orders-api-prod}.
@@ -177,6 +181,42 @@ public class ProvanceOptions {
         return genesisHash == null || genesisHash.isEmpty() ? LedgerHashing.deriveGenesisHash(ledgerId) : genesisHash;
     }
 
+    /** How often the archive copy looks for entries to copy when no write wakes it up. Default 5 seconds. */
+    public Duration getArchiveInterval() {
+        return archiveInterval;
+    }
+
+    public void setArchiveInterval(Duration archiveInterval) {
+        this.archiveInterval = archiveInterval;
+    }
+
+    /** How long entries stay in the primary store (for example 7 days); {@code null} (default): no automatic retention. */
+    public Duration getRetentionKeepFor() {
+        return retentionKeepFor;
+    }
+
+    public void setRetentionKeepFor(Duration retentionKeepFor) {
+        this.retentionKeepFor = retentionKeepFor;
+    }
+
+    /** Interval between two automatic retention runs. Default 24 hours. */
+    public Duration getRetentionInterval() {
+        return retentionInterval;
+    }
+
+    public void setRetentionInterval(Duration retentionInterval) {
+        this.retentionInterval = retentionInterval;
+    }
+
+    /** Remove entries only when an archive holds an identical copy. Default {@code true}. */
+    public boolean isRetentionRequireArchive() {
+        return retentionRequireArchive;
+    }
+
+    public void setRetentionRequireArchive(boolean retentionRequireArchive) {
+        this.retentionRequireArchive = retentionRequireArchive;
+    }
+
     /** Copies every setting (the retired keys map is copied too). */
     public ProvanceOptions copy() {
         ProvanceOptions c = new ProvanceOptions();
@@ -193,6 +233,10 @@ public class ProvanceOptions {
         c.maxConflictRetries = maxConflictRetries;
         c.checkpointInterval = checkpointInterval;
         c.shutdownTimeout = shutdownTimeout;
+        c.archiveInterval = archiveInterval;
+        c.retentionKeepFor = retentionKeepFor;
+        c.retentionInterval = retentionInterval;
+        c.retentionRequireArchive = retentionRequireArchive;
         return c;
     }
 
@@ -238,6 +282,15 @@ public class ProvanceOptions {
         }
         if (shutdownTimeout == null || shutdownTimeout.isNegative()) {
             errors.add("shutdownTimeout cannot be negative.");
+        }
+        if (archiveInterval == null || archiveInterval.isNegative() || archiveInterval.isZero()) {
+            errors.add("archiveInterval must be positive.");
+        }
+        if (retentionKeepFor != null && (retentionKeepFor.isNegative() || retentionKeepFor.isZero())) {
+            errors.add("retentionKeepFor must be positive.");
+        }
+        if (retentionInterval == null || retentionInterval.isNegative() || retentionInterval.isZero()) {
+            errors.add("retentionInterval must be positive.");
         }
 
         if (!errors.isEmpty()) {

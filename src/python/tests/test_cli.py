@@ -19,12 +19,43 @@ def test_verify_java_export_with_rotated_keys_and_checkpoint(monkeypatch, capsys
     monkeypatch.setenv("K1", "provance-test-vector-key-0123456789abcdef")
     code = main(["verify", "--file", str(JAVA / "entries.jsonl"), "--ledger-id", "cross-language-test",
                  "--key-id", "k2", "--key-env", "K2", "--retired-key", "k1=K1",
-                 "--checkpoint", str(JAVA / "checkpoint.json")])
+                 "--checkpoint", str(JAVA / "checkpoint.json"), "--accept-unrecorded-redactions"])
     out = capsys.readouterr().out
     assert code == 0, out
     assert out.startswith("OK: 6 entries verified")
     assert "Checkpoint at sequence 6 matched." in out
     assert "1 payload(s) redacted." in out
+
+
+def test_java_0_1_export_has_an_unrecorded_erasure(monkeypatch, capsys):
+    monkeypatch.setenv("K2", "provance-test-vector-key-2-abcdef0123456789")
+    monkeypatch.setenv("K1", "provance-test-vector-key-0123456789abcdef")
+    code = main(["verify", "--file", str(JAVA / "entries.jsonl"), "--ledger-id", "cross-language-test",
+                 "--key-id", "k2", "--key-env", "K2", "--retired-key", "k1=K1"])
+    assert code == 1
+    assert "FAILED (unrecorded_redaction)" in capsys.readouterr().out
+
+
+def test_diff_shows_the_original_value_of_a_changed_field(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("K2", "provance-test-vector-key-2-abcdef0123456789")
+    monkeypatch.setenv("K1", "provance-test-vector-key-0123456789abcdef")
+    archive = JAVA / "entries.jsonl"
+    lines = archive.read_text(encoding="utf-8").split("\n")
+    entry = json.loads(lines[1])
+    entry["payloadJson"] = entry["payloadJson"].replace("49.90", "4990.00")
+    lines[1] = json.dumps(entry)
+    primary = tmp_path / "primary.jsonl"
+    primary.write_text("\n".join(lines), encoding="utf-8")
+
+    code = main(["diff", str(primary), str(archive), "--ledger-id", "cross-language-test",
+                 "--key-id", "k2", "--key-env", "K2", "--retired-key", "k1=K1"])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "Entry 2 (ORDER_REFUNDED) was changed in the primary store" in out
+    assert 'payload.data.amount: "49.90" -> "4990.00"' in out
+
+    assert main(["diff", str(archive), str(archive), "--ledger-id", "cross-language-test", "--key-id", "k2",
+                 "--key-env", "K2", "--retired-key", "k1=K1"]) == 0
 
 
 def test_failed_verification_exits_with_1_and_json(tmp_path, monkeypatch, capsys):

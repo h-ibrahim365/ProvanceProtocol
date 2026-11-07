@@ -19,7 +19,7 @@ import java.util.stream.Stream;
  * Thread safe in-memory store for tests and demos. Everything is lost when the process stops.
  * It is never used as a silent fallback: choose it explicitly.
  */
-public final class InMemoryLedgerStore implements LedgerStore {
+public final class InMemoryLedgerStore implements PrunableLedgerStore {
 
     private final Object gate = new Object();
     private final List<LedgerEntry> entries = new ArrayList<>(); // ordered by sequence
@@ -112,6 +112,16 @@ public final class InMemoryLedgerStore implements LedgerStore {
         synchronized (gate) {
             entries.removeIf(predicate);
             reindex();
+        }
+    }
+
+    @Override
+    public long deleteBefore(long sequence) {
+        synchronized (gate) {
+            int before = entries.size();
+            entries.removeIf(e -> e.sequence() < sequence);
+            reindex();
+            return before - entries.size();
         }
     }
 

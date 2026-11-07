@@ -4,7 +4,8 @@ Java implementation of PROVANCE, the tamper-evident audit trail. It writes the s
 library ([format specification](../../docs/SPEC.md)) and passes the same [test vectors](../../docs/test-vectors/v1.json):
 a ledger written in one language can be verified in the other.
 
-Requires Java 17 or later. Works with Kotlin too.
+Requires Java 17 or later. Works with Kotlin too. To see what it does before installing anything, try the
+[live demo](https://provance.iamhakim.com).
 
 | Module | Use |
 | :----- | :-- |
@@ -20,14 +21,14 @@ Published on Maven Central under `io.github.h-ibrahim365`.
 <dependency>
     <groupId>io.github.h-ibrahim365</groupId>
     <artifactId>provance-spring-boot-starter</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
 With Gradle:
 
 ```kotlin
-implementation("io.github.h-ibrahim365:provance-spring-boot-starter:0.1.0")
+implementation("io.github.h-ibrahim365:provance-spring-boot-starter:0.2.0")
 ```
 
 `application.properties` (no secret here):
@@ -107,8 +108,14 @@ HttpAuditCustomizer provanceHttp() {
 | `provance.checkpoint-interval` | `5m` |
 | `provance.queue-capacity`, `provance.queue-full-behavior` | `10000`, `wait` |
 | `provance.http.enabled` | `false` |
+| `provance.http.ledger-bean` | none, the ledger that receives HTTP entries when there are several |
+| `provance.archive.enabled`, `provance.archive.table-name` | `false`, `provance_archive` (see Archive copy) |
+| `provance.archive-interval` | `5s` |
+| `provance.retention-keep-for` | none, see Retention |
+| `provance.retention-interval`, `provance.retention-require-archive` | `24h`, `true` |
 
-Declare a `LedgerStore`, `LedgerSigner`, `PayloadSerializer` or `LedgerCheckpointSink` bean to replace the default.
+Declare a `LedgerStore`, `LedgerSigner`, `PayloadSerializer`, `LedgerCheckpointSink` or `ProvanceArchive` bean to
+replace the default.
 
 ## Without Spring
 
@@ -177,6 +184,73 @@ LedgerVerifier verifier = new LedgerVerifier(new JdbcLedgerStore(readOnlyDataSou
 The default signature is HMAC-SHA256: whoever has the key can sign. Implement `LedgerSigner` to keep the key in a
 KMS so the application never sees it.
 
+## Several ledgers
+
+Declare one `ProvanceLedger` bean per ledger, each with its own ledger id, key and table. The starter then creates no
+ledger of its own; inject them with `@Qualifier`, and name the one that receives HTTP entries with
+`provance.http.ledger-bean`.
+
+```java
+@Bean(destroyMethod = "close")
+ProvanceLedger billingLedger(DataSource dataSource) {
+    JdbcStoreOptions table = new JdbcStoreOptions();
+    table.setTableName("provance_ledger_billing");
+    return ProvanceLedger.builder()
+            .ledgerId("billing-prod")
+            .secretKey(System.getenv("PROVANCE_BILLING_KEY"))
+            .store(new JdbcLedgerStore(dataSource, table))
+            .build();
+}
+```
+
+## Archive copy and comparison (0.2)
+
+Every entry can be copied, in the background, to a second store: ideally another database, with an account that can
+only insert into the archive table.
+
+```java
+ProvanceLedger ledger = ProvanceLedger.builder()
+        .ledgerId("orders-api-prod")
+        .secretKey(System.getenv("PROVANCE_SECRET_KEY"))
+        .store(new JdbcLedgerStore(dataSource))
+        .archive(new JdbcLedgerStore(archiveDataSource, archiveTable))   // table provance_archive
+        .build();
+
+LedgerComparison comparison = ledger.compareWithArchive();
+if (!comparison.identical()) {
+    log.error(comparison.describe());
+}
+```
+
+With Spring, declare a `ProvanceArchive` bean wrapping the archive store, or set `provance.archive.enabled=true` to
+use the table `provance_archive` on the application `DataSource` (same account, so weaker protection).
+
+Each entry is checked before it is copied: an entry modified before it was copied is not propagated, and
+`archiveStatus()` reports it. When verification fails, the comparison shows which field changed and its original
+value:
+
+```
+Entry 42 (ORDER_REFUNDED) was changed in the primary store (the archive copy verifies, the primary copy does not).
+  payload.data.amount: "49.90" -> "4990.00"
+```
+
+`LedgerJsonLines.write(store, writer)` exports a ledger in the JSON Lines format shared by the three libraries, and
+`ledger.comparer().compare(primary, LedgerJsonLines.open(path), 1000)` compares with an export. The Python
+`provance diff` command reads the same files.
+
+`redactPayload` erases the payload in both copies, after appending a signed redaction record: a payload set to `NULL`
+directly in the database is reported by `verify()` (`UNRECORDED_REDACTION`). Ledgers erased with 0.1 verify with
+`LedgerVerificationOptions.defaults().acceptingUnrecordedRedactions()`. Event types starting with `provance.` are
+reserved for these records.
+
+## Retention (0.2)
+
+`provance.retention-keep-for=400d` (or `setRetentionKeepFor` on the options) removes older entries from the primary
+store once the archive holds an identical copy, after appending a signed retention record. `verify()` still passes,
+and deleting the first entries without such a record is still detected. Or call
+`ledger.applyRetention(Duration.ofDays(400))` from a scheduled job. Needs `DELETE` on the primary table. See
+[RETENTION.md](../../docs/RETENTION.md).
+
 ## Building
 
 ```bash
@@ -192,5 +266,5 @@ mvn install           # installs the current version in your local Maven reposit
 2. Create a GPG key and publish its public part to `keyserver.ubuntu.com`.
 3. Add the repository secrets `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` (the token),
    `MAVEN_GPG_PRIVATE_KEY` (armored private key) and `MAVEN_GPG_PASSPHRASE`.
-4. Publish a GitHub release tagged `java-v0.1.0`. The `Release (Java)` workflow checks the tag against the POM,
+4. Publish a GitHub release tagged `java-v0.2.0`. The `Release (Java)` workflow checks the tag against the POM,
    runs the tests, signs and uploads the three modules.

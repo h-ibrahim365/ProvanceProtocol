@@ -31,3 +31,8 @@ class LedgerOverloadedError(LedgerUnavailableError):
 
 class PayloadError(ValueError):
     """The payload cannot be serialized to canonical JSON."""
+
+
+class LedgerArchiveError(LedgerError):
+    """An operation succeeded on the primary store but not on the archive, for example a payload erased in the primary
+    store that is still present in the archive."""

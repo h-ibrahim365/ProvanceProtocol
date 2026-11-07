@@ -1,7 +1,7 @@
 // Shared state of the "How it works" page: the demo ledger, the version and the current step.
 // The explainer above the demo uses it to replay an attack in the demo.
 
-import { CURRENT, type Version, VERSIONS } from "../versions";
+import { CURRENT, type Version, VERSIONS, tryable } from "../versions";
 import { Demo } from "./demo.svelte";
 
 class Tour {
@@ -10,6 +10,7 @@ class Tour {
   stepIndex = $state(0);
 
   constructor() {
+    this.demo.recordsRedactions = this.version.recordedRedactions;
     this.goto(0);
   }
 
@@ -28,11 +29,26 @@ class Tour {
   }
 
   chooseVersion(id: string): void {
-    const v = VERSIONS.find((x) => x.id === id && x.released);
-    if (v) {
-      this.version = v;
+    const v = VERSIONS.find((x) => x.id === id && tryable(x));
+    if (v && v !== this.version) {
+      this.use(v);
       this.goto(0);
     }
+  }
+
+  /** Opens a step from a link such as #try-retention, in the newest version that has it. */
+  openStep(id: string): boolean {
+    const v = [...VERSIONS].reverse().find((x) => tryable(x) && x.steps.some((s) => s.id === id));
+    if (!v) return false;
+    if (v !== this.version) this.use(v);
+    this.gotoId(id);
+    return true;
+  }
+
+  private use(v: Version): void {
+    this.version = v;
+    this.demo.reset();
+    this.demo.recordsRedactions = v.recordedRedactions;
   }
 }
 

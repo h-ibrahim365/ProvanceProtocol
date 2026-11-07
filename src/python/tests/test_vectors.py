@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+import pytest
 import rfc8785
 
 from provance import (
@@ -64,17 +65,41 @@ def test_checkpoint(vectors):
     assert compute_checkpoint_digest(checkpoint) == expected["digest"]
 
 
-def test_ledger_written_by_the_java_library_verifies():
-    folder = VECTORS / "ledger-java"
-    checkpoint = LedgerCheckpoint.from_json((folder / "checkpoint.json").read_text(encoding="utf-8"))
-    verifier = LedgerVerifier(JsonLinesReader(folder / "entries.jsonl"), HmacVerifier(JAVA_KEYS), "cross-language-test")
+# language, ledger id, entries, whether the erasure has a redaction record (written by 0.2 and later)
+FIXTURES = [("java", "cross-language-test", 6, False), ("python", "cross-language-python", 7, True),
+            ("dotnet", "cross-language-dotnet", 7, True)]
 
-    result = verifier.verify(checkpoint=checkpoint)
+
+@pytest.mark.parametrize("language, ledger_id, count, recorded", FIXTURES)
+def test_ledger_written_by_each_library_verifies(language, ledger_id, count, recorded):
+    folder = VECTORS / f"ledger-{language}"
+    checkpoint = LedgerCheckpoint.from_json((folder / "checkpoint.json").read_text(encoding="utf-8"))
+    verifier = LedgerVerifier(JsonLinesReader(folder / "entries.jsonl"), HmacVerifier(JAVA_KEYS), ledger_id)
+
+    result = verifier.verify(checkpoint=checkpoint, accept_unrecorded_redactions=not recorded)
 
     assert result.valid, result.message
-    assert result.entries_verified == 6
+    assert result.entries_verified == count
     assert result.redacted_payloads == 1
     assert result.last_hash == checkpoint.hash
+    if not recorded:  # erased by a 0.1 library: reported unless explicitly accepted
+        assert verifier.verify().failure is VerificationFailure.UNRECORDED_REDACTION
+
+
+@pytest.mark.parametrize("language, ledger_id, count, recorded", FIXTURES)
+def test_an_edited_entry_shows_its_original_value_in_the_comparison(language, ledger_id, count, recorded):
+    from provance import LedgerComparer, OriginalCopy
+
+    original = list(JsonLinesReader(VECTORS / f"ledger-{language}" / "entries.jsonl").read())
+    edited = list(original)
+    edited[2] = edited[2].with_changes(event_type="SOMETHING_ELSE")
+
+    comparison = LedgerComparer(HmacVerifier(JAVA_KEYS), ledger_id).compare(ListSource(edited), ListSource(original))
+
+    [difference] = comparison.differences
+    assert difference.sequence == 3
+    assert difference.original is OriginalCopy.ARCHIVE
+    assert [(f.field, f.primary_value) for f in difference.fields] == [("eventType", "SOMETHING_ELSE")]
 
 
 def test_java_ledger_needs_the_retired_key():

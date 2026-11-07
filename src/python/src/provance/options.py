@@ -54,6 +54,14 @@ class ProvanceOptions:
 
     shutdown_timeout: timedelta = timedelta(seconds=30)
     """How long ``close()`` waits for queued entries to be written."""
+    archive_interval: timedelta = timedelta(seconds=5)
+    """How often the archive copy looks for entries to copy when no write wakes it up. Only used with an archive."""
+    retention_keep_for: timedelta | None = None
+    """How long entries stay in the primary store (for example 7 days). ``None``: nothing is removed automatically."""
+    retention_interval: timedelta = timedelta(hours=24)
+    """Interval between two automatic retention runs."""
+    retention_require_archive: bool = True
+    """Remove entries only when an archive holds the same entries. Set to ``False`` only if you keep a copy another way."""
 
     def effective_genesis_hash(self) -> str:
         return self.genesis_hash or derive_genesis_hash(self.ledger_id)
@@ -88,5 +96,11 @@ class ProvanceOptions:
             errors.append("checkpoint_interval must be positive.")
         if self.shutdown_timeout < timedelta(0):
             errors.append("shutdown_timeout cannot be negative.")
+        if self.archive_interval <= timedelta(0):
+            errors.append("archive_interval must be positive.")
+        if self.retention_keep_for is not None and self.retention_keep_for <= timedelta(0):
+            errors.append("retention_keep_for must be positive.")
+        if self.retention_interval <= timedelta(0):
+            errors.append("retention_interval must be positive.")
         if errors:
             raise ValueError("PROVANCE configuration is invalid: " + " ".join(errors))

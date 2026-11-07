@@ -3,6 +3,7 @@ package io.github.hibrahim365.provance.jdbc;
 import io.github.hibrahim365.provance.LedgerConcurrencyException;
 import io.github.hibrahim365.provance.LedgerEntry;
 import io.github.hibrahim365.provance.store.LedgerStore;
+import io.github.hibrahim365.provance.store.PrunableLedgerStore;
 import io.github.hibrahim365.provance.store.LedgerStoreException;
 
 import java.sql.Connection;
@@ -37,7 +38,7 @@ import javax.sql.DataSource;
  * whether a row with one of the batch's sequences or ids now exists. A batch is inserted in one transaction, so it
  * is persisted completely or not at all.
  */
-public final class JdbcLedgerStore implements LedgerStore {
+public final class JdbcLedgerStore implements PrunableLedgerStore {
 
     private static final String COLUMNS =
             "id, format_version, ledger_id, seq, sealed_at, event_type, payload, payload_hash, previous_hash, key_id, entry_hash, signature";
@@ -193,6 +194,23 @@ public final class JdbcLedgerStore implements LedgerStore {
             return updated > 0;
         } catch (SQLException e) {
             throw failure("redacting a payload", e);
+        }
+    }
+
+    /** Deletes every entry with a lower sequence (retention). Needs {@code DELETE} on the table. */
+    @Override
+    public long deleteBefore(long sequence) {
+        ensureInitialized();
+        String sql = "DELETE FROM " + table + " WHERE seq < ?";
+        try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, sequence);
+            int deleted = ps.executeUpdate();
+            if (!c.getAutoCommit()) {
+                c.commit();
+            }
+            return deleted;
+        } catch (SQLException e) {
+            throw failure("deleting old entries", e);
         }
     }
 

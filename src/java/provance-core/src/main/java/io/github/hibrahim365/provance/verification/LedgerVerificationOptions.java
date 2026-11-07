@@ -12,9 +12,15 @@ import io.github.hibrahim365.provance.LedgerCheckpoint;
  * @param throwOnFailure      throw {@link io.github.hibrahim365.provance.LedgerTamperedException} instead of returning a
  *                            failed result
  */
-public record LedgerVerificationOptions(LedgerCheckpoint trustedCheckpoint, boolean startFromCheckpoint, boolean throwOnFailure) {
+public record LedgerVerificationOptions(LedgerCheckpoint trustedCheckpoint, boolean startFromCheckpoint, boolean throwOnFailure,
+                                        boolean acceptUnrecordedRedactions) {
 
-    private static final LedgerVerificationOptions DEFAULTS = new LedgerVerificationOptions(null, false, false);
+    private static final LedgerVerificationOptions DEFAULTS = new LedgerVerificationOptions(null, false, false, false);
+
+    /** Options without {@code acceptUnrecordedRedactions} (as in 0.1). */
+    public LedgerVerificationOptions(LedgerCheckpoint trustedCheckpoint, boolean startFromCheckpoint, boolean throwOnFailure) {
+        this(trustedCheckpoint, startFromCheckpoint, throwOnFailure, false);
+    }
 
     /** Full verification from the genesis entry, without checkpoint. */
     public static LedgerVerificationOptions defaults() {
@@ -28,11 +34,19 @@ public record LedgerVerificationOptions(LedgerCheckpoint trustedCheckpoint, bool
 
     /** Copy with {@code startFromCheckpoint} set. */
     public LedgerVerificationOptions startingFromCheckpoint() {
-        return new LedgerVerificationOptions(trustedCheckpoint, true, throwOnFailure);
+        return new LedgerVerificationOptions(trustedCheckpoint, true, throwOnFailure, acceptUnrecordedRedactions);
     }
 
     /** Copy with {@code throwOnFailure} set. */
     public LedgerVerificationOptions throwingOnFailure() {
-        return new LedgerVerificationOptions(trustedCheckpoint, startFromCheckpoint, true);
+        return new LedgerVerificationOptions(trustedCheckpoint, startFromCheckpoint, true, acceptUnrecordedRedactions);
+    }
+
+    /**
+     * Copy that accepts payloads removed without a redaction record. Only for ledgers erased with 0.1, which wrote no
+     * such record; with it, a payload deleted directly in the database is not detected.
+     */
+    public LedgerVerificationOptions acceptingUnrecordedRedactions() {
+        return new LedgerVerificationOptions(trustedCheckpoint, startFromCheckpoint, throwOnFailure, true);
     }
 }

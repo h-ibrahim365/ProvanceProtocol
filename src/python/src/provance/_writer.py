@@ -70,6 +70,7 @@ class LedgerWriter:
         self._accept_lock = threading.Lock()  # an entry is queued only while accepting, never after the writer stopped
         self._aborted = False
         self._head: tuple[int, str] | None = None  # writer thread only
+        self.on_appended: Callable[[], None] | None = None  # wakes the archive copy
         self.thread = threading.Thread(target=self._run, name=f"provance-writer-{options.ledger_id}", daemon=True)
 
     def start(self) -> None:
@@ -162,6 +163,7 @@ class LedgerWriter:
                 for item, entry in zip(pending, sealed):
                     item.succeed(entry)
                 self._head = (sealed[-1].sequence, sealed[-1].hash)
+                self._notify()
                 return
             except LedgerConcurrencyError as e:
                 failure: Exception = e
@@ -223,6 +225,14 @@ class LedgerWriter:
         if acknowledged:
             log.info("%d entries were persisted despite the reported failure.", acknowledged)
             del pending[:acknowledged]
+            self._notify()
+
+    def _notify(self) -> None:
+        if self.on_appended is not None:
+            try:
+                self.on_appended()
+            except Exception:  # never let a listener break the writer
+                log.exception("PROVANCE append listener failed.")
 
     def _load_head(self) -> tuple[int, str]:
         head = self._store.get_head()

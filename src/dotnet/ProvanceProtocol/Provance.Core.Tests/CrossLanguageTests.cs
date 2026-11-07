@@ -27,7 +27,7 @@ namespace Provance.Core.Tests
         }
 
         /// <summary>Entries in each fixture, and whether its erasure has a redaction record (written by 0.2 and later).</summary>
-        private static (int Entries, bool Recorded) Shape(string language) => language == "dotnet" ? (7, true) : (6, false);
+        private static (int Entries, bool Recorded) Shape(string language) => language == "java" ? (6, false) : (7, true);
 
         [Theory]
         [InlineData("java")]
@@ -52,7 +52,6 @@ namespace Provance.Core.Tests
 
         [Theory]
         [InlineData("java")]
-        [InlineData("python")]
         public async Task An_erasure_made_by_a_0_1_library_has_no_record_and_is_reported_by_default(string language)
         {
             var (file, _, ledgerId) = await LoadAsync(language);

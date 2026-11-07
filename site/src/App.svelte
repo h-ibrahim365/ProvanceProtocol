@@ -2,6 +2,8 @@
   import Demo from "./lib/demo/Demo.svelte";
   import Explainer from "./lib/demo/Explainer.svelte";
   import Releases from "./lib/releases/Releases.svelte";
+  import { untrack } from "svelte";
+  import { tour } from "./lib/demo/tour.svelte";
 
   type Page = "demo" | "releases";
 
@@ -11,8 +13,20 @@
 
   let page = $state<Page>(pageFromHash());
 
+  /** Links such as #try-retention open that step of the demo (used by the documentation). */
+  function openLinkedStep() {
+    const id = location.hash.startsWith("#try-") ? location.hash.slice(5) : null;
+    if (id && untrack(() => tour.openStep(id))) {
+      requestAnimationFrame(() => document.getElementById("try")?.scrollIntoView());
+    }
+  }
+
   $effect(() => {
-    const update = () => (page = pageFromHash());
+    const update = () => {
+      page = pageFromHash();
+      openLinkedStep();
+    };
+    openLinkedStep();
     addEventListener("hashchange", update);
     return () => removeEventListener("hashchange", update);
   });

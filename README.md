@@ -14,6 +14,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license" /></a>
 </p>
 
+<p align="center"><a href="https://provance.iamhakim.com"><strong>Try the live demo</strong></a>: tamper with a real ledger in your browser and watch verification catch it.</p>
+
 PROVANCE records application events (who did what, when) in an append only ledger where every entry
 is chained to the previous one with SHA-256 and signed. If someone edits, deletes or reorders entries
 directly in the database, verification tells you exactly where.
@@ -104,6 +106,9 @@ visible, and it tells you from which entry the log can no longer be trusted.
 | Someone with the signing key and write access rewrites the whole ledger | Only with a trusted checkpoint |
 | The whole database is deleted | No. Use backups. |
 
+Each of these situations can be tried in the [demo](https://provance.iamhakim.com/#try-tamper): edit, delete or reorder rows, recompute
+the hashes, cut off the end, then verify.
+
 A **checkpoint** is a small signed statement "the ledger was at sequence N with hash H". It only helps if
 you store it where the people who can modify the ledger cannot: object storage with a retention lock,
 WORM storage, a timestamping service, a system owned by another team. PROVANCE can publish checkpoints
@@ -157,8 +162,9 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 
 ## Documentation
 
+* [Interactive demo](https://provance.iamhakim.com): every step of the format, the attacks above and the 0.2 features, in the browser
 * [Ledger format specification](docs/SPEC.md) and [test vectors](docs/test-vectors/) (with an independent Python checker)
-* [Archive copy and comparison](docs/ARCHIVE.md), [retention](docs/RETENTION.md) (.NET 0.2)
+* [Archive copy and comparison](docs/ARCHIVE.md), [retention](docs/RETENTION.md) (0.2)
 * [.NET guide](src/dotnet/README.md) and [implementation notes](docs/ARCHITECTURE.md)
 * [Java guide](src/java/README.md)
 * [Python guide](src/python/README.md)
@@ -168,20 +174,21 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 
 ## Status
 
-Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET, Java and
+Version 0.2.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET, Java and
 Python APIs may still change before 1.0.
 
 ## Roadmap
 
-**0.2**, done in .NET, to be ported to Java and Python before the release (the three ship together):
+**0.2**, ready in .NET, Java and Python (the three are released together):
 
 * **Several ledgers in one application**, for example one per tenant, or one for audit and one for billing.
 * **Archive copy**: every entry is copied, in the background, to a second store where the application can only
-  insert, for example an archive database owned by another team ([ARCHIVE.md](docs/ARCHIVE.md)).
+  insert, for example an archive database owned by another team ([ARCHIVE.md](docs/ARCHIVE.md),
+  [try it](https://provance.iamhakim.com/#try-archive)).
 * **Field-level comparison** between the two copies: verification says which entry was changed; the comparison
   says which field, with its original and current value (`provance diff` in the Python command line tool).
 * **Retention**: old entries leave the primary store once the archive holds them, and the ledger still verifies
-  ([RETENTION.md](docs/RETENTION.md)).
+  ([RETENTION.md](docs/RETENTION.md), [try it](https://provance.iamhakim.com/#try-retention)).
 * **Cross-language tests in every suite**: ledgers written by [Java](docs/test-vectors/ledger-java/),
   [Python](docs/test-vectors/ledger-python/) and [.NET](docs/test-vectors/ledger-dotnet/) verify everywhere.
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { reveal } from "../ui/media.svelte";
-  import { VERSIONS } from "../versions";
+  import { VERSIONS, tryable } from "../versions";
   import type { Action } from "./steps";
   import { tour } from "./tour.svelte";
 
@@ -20,7 +20,7 @@
     <label for="version">Version</label>
     <select id="version" value={tour.version.id} onchange={(e) => tour.chooseVersion(e.currentTarget.value)}>
       {#each VERSIONS as v (v.id)}
-        <option value={v.id} disabled={!v.released}>{v.label}</option>
+        <option value={v.id} disabled={!tryable(v)}>{v.label}</option>
       {/each}
     </select>
     <details>
@@ -29,9 +29,12 @@
       <ul>
         {#each tour.version.changes as c (c)}<li>{c}</li>{/each}
       </ul>
-      {#if VERSIONS.some((v) => !v.released)}
+      {#if !tour.version.released}
+        <p class="next">Not released yet: this preview shows what the next release does.</p>
+      {:else if VERSIONS.some((v) => !v.released)}
         <p class="next">
           Next: {VERSIONS.filter((v) => !v.released).map((v) => v.changes.join(", ").toLowerCase()).join("; ")}.
+          {#if VERSIONS.some((v) => !v.released && v.preview)}Choose it in the menu to try it.{/if}
         </p>
       {/if}
     </details>

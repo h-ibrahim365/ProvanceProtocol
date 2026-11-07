@@ -22,7 +22,11 @@ From an external review of the code.
   one. Before, `UPDATE ... SET payload = NULL` in the database looked like a legitimate GDPR erasure. Ledgers erased
   with 0.1 verify with `AcceptUnrecordedRedactions = true`. See docs/SPEC.md, section 6.
 
-### .NET 0.2.0 (in progress; Java and Python follow, the three ship together)
+### 0.2.0 (.NET, Java and Python, released together)
+
+The three libraries ship the same features, described below for .NET, then what differs in Java and Python.
+
+#### .NET 0.2.0
 
 Ledger format 1 is unchanged: a ledger written by 0.1 verifies with 0.2. Retention adds a reserved event type
 (`provance.retention`, docs/SPEC.md section 9) that verifiers must know before reading a store that used retention.
@@ -52,6 +56,48 @@ Ledger format 1 is unchanged: a ledger written by 0.1 verifies with 0.2. Retenti
 * `ILedgerService` gained members (with default implementations) and `IProvanceBuilder` gained `LedgerName`.
   Custom implementations of these interfaces keep compiling.
 
+#### Java 0.2.0
+
+* Archive copy: `ProvanceLedger.builder().archive(store)`; `archiveStatus()`, `compareWithArchive()`,
+  `comparer()`. The copy runs on its own thread, checks each entry before copying it, and finishes on `close()`.
+* Field-level comparison: package `io.github.hibrahim365.provance.compare` (`LedgerComparer`, `LedgerComparison`,
+  `EntryDifference`, `FieldDifference`, `DifferenceKind`, `OriginalCopy`).
+* Retention: `applyRetention(Duration)` and `setRetentionKeepFor`, `setRetentionInterval`,
+  `setRetentionRequireArchive` on `ProvanceOptions`. `PrunableLedgerStore` (`deleteBefore`) is implemented by the
+  in-memory store and `JdbcLedgerStore`.
+* Signed redaction records, `VerificationFailure.UNRECORDED_REDACTION` and
+  `LedgerVerificationOptions.acceptingUnrecordedRedactions()`. `LedgerVerificationResult.firstSequence()`.
+* `LedgerJsonLines` and `JsonLinesLedgerFile` (package `export`): the shared JSON Lines export format.
+* Event types starting with `provance.` are reserved.
+* Spring Boot starter: `ProvanceArchive` bean or `provance.archive.enabled=true` (table `provance_archive`),
+  `provance.archive-interval`, `provance.retention-*`. Several ledgers are declared as `ProvanceLedger` beans; the
+  starter then creates no ledger, store or signer of its own, and `provance.http.ledger-bean` names the ledger that
+  receives HTTP entries.
+* Cross-language tests: the Java suite verifies the Java, Python and .NET fixtures.
+
+#### Python 0.2.0
+
+* Archive copy: `ProvanceLedger(..., archive=store)`; `archive_status()`, `compare_with_archive()`. The copy runs in
+  a daemon thread, checks each entry before copying it, and finishes on `close()`.
+* Field-level comparison: `LedgerComparer`, `LedgerComparison`, `EntryDifference`, `FieldDifference`,
+  `DifferenceKind`, `OriginalCopy`.
+* `provance diff PRIMARY ARCHIVE`: compares two databases or JSON Lines exports, field by field (`--json`; exit
+  code 1 when they differ). `provance verify --accept-unrecorded-redactions`.
+* Retention: `apply_retention(keep_for)` and the options `retention_keep_for`, `retention_interval`,
+  `retention_require_archive`. `delete_before` on the in-memory and SQL stores.
+* Signed redaction records, `VerificationFailure.UNRECORDED_REDACTION`, `accept_unrecorded_redactions=True`.
+  `VerificationResult.first_sequence`.
+* Event types starting with `provance.` are reserved.
+* Several ledgers: one `ProvanceLedger` per ledger, the HTTP integrations write to the one they are given.
+* Cross-language tests: the Python suite verifies the Java, Python and .NET fixtures. The Python fixture was
+  regenerated with 0.2 (it now holds a redaction record).
+
+#### Common
+
+* Demo site: version 0.2.0 can be tried before its release (marked preview). Three new steps: an erasure with its
+  redaction record next to a payload set to NULL in the database, an archive copy with the field-level comparison,
+  and retention. The site's verifier applies the 0.2 rules. Links such as `#try-retention` open a step directly; the
+  READMEs and docs link to the demo.
 * POM metadata: the project and SCM URLs of the modules pointed to `.../ProvanceProtocol/provance-core` (and so on),
   which does not exist. They now point to the repository. No code change.
 * Release tags: from 0.2.0 the .NET packages are released from a tag `dotnet-vX.Y.Z`, like `java-vX.Y.Z` and

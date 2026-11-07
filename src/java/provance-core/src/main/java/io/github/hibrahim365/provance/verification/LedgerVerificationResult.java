@@ -25,5 +25,14 @@ public record LedgerVerificationResult(
         long entriesVerified,
         long redactedPayloads,
         long lastSequence,
-        String lastHash) {
+        String lastHash,
+        long firstSequence) {
+
+    /** Result without {@code firstSequence} (as in 0.1). */
+    public LedgerVerificationResult(boolean valid, VerificationFailure failure, String message, Long failedAtSequence,
+                                    UUID failedEntryId, long entriesVerified, long redactedPayloads, long lastSequence,
+                                    String lastHash) {
+        this(valid, failure, message, failedAtSequence, failedEntryId, entriesVerified, redactedPayloads, lastSequence,
+                lastHash, 0);
+    }
 }

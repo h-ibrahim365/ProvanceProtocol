@@ -1,6 +1,7 @@
 # PROVANCE for .NET
 
-.NET 8 and later. For what PROVANCE does and what it detects, see the [main README](../../README.md).
+.NET 8 and later. For what PROVANCE does and what it detects, see the [main README](../../README.md), or try the
+[live demo](https://provance.iamhakim.com) in your browser.
 
 | Package | Use |
 | :------ | :-- |

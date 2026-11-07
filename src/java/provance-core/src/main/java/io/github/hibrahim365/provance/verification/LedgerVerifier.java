@@ -1,5 +1,7 @@
 package io.github.hibrahim365.provance.verification;
 
+import io.github.hibrahim365.provance.LibraryRecords;
+
 import io.github.hibrahim365.provance.LedgerCheckpoint;
 import io.github.hibrahim365.provance.LedgerEntry;
 import io.github.hibrahim365.provance.LedgerTamperedException;
@@ -11,6 +13,8 @@ import io.github.hibrahim365.provance.store.LedgerStore;
 
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -77,11 +81,25 @@ public final class LedgerVerifier {
         long lastSequence = 0;
         String lastHash = null;
         boolean checkpointSeen = false;
+        // Retention (SPEC section 9): a ledger starting after sequence 1 needs a retention record for its first entry.
+        long firstSequence = 0;
+        String firstHash = null;
+        boolean startNeedsRecord = false;
+        boolean startVouched = false;
+        // Redaction (SPEC section 6): every erased payload needs a redaction record naming it.
+        java.util.TreeMap<Long, UUID> erased = new java.util.TreeMap<>();
+        java.util.Set<LibraryRecords.ErasedEntry> authorized = new java.util.HashSet<>();
 
         try (Stream<LedgerEntry> entries = store.read(expectedSequence)) {
             Iterator<LedgerEntry> it = entries.iterator();
             while (it.hasNext()) {
                 LedgerEntry entry = it.next();
+
+                if (verified == 0 && !fromCheckpoint && entry.sequence() > expectedSequence) {
+                    expectedSequence = entry.sequence();
+                    expectedPrevious = null;
+                    startNeedsRecord = true;
+                }
 
                 if (entry.sequence() != expectedSequence) {
                     String what = entry.sequence() > expectedSequence ? "is missing" : "appears more than once or out of order";
@@ -109,6 +127,10 @@ public final class LedgerVerifier {
 
                 if (entry.payloadJson() == null) {
                     redacted++;
+                    if (!options.acceptUnrecordedRedactions()
+                            && !authorized.contains(new LibraryRecords.ErasedEntry(entry.sequence(), entry.id()))) {
+                        erased.put(entry.sequence(), entry.id());
+                    }
                 } else if (!LedgerHashing.sha256Hex(entry.payloadJson()).equals(entry.payloadHash())) {
                     return fail(VerificationFailure.PAYLOAD_HASH_MISMATCH, "Payload does not match PayloadHash.",
                             entry, verified, redacted, lastSequence, lastHash, null);
@@ -137,6 +159,26 @@ public final class LedgerVerifier {
                                     entry, verified, redacted, lastSequence, lastHash, null);
                 }
 
+                if (verified == 0) {
+                    firstSequence = entry.sequence();
+                    firstHash = entry.hash();
+                }
+
+                if (LibraryRecords.REDACTION_EVENT.equals(entry.eventType())) {
+                    Optional<LibraryRecords.ErasedEntry> named = LibraryRecords.parseRedaction(entry.payloadJson());
+                    if (named.isPresent()) {
+                        authorized.add(named.get());
+                        erased.remove(named.get().sequence(), named.get().entryId());
+                    }
+                }
+
+                if (startNeedsRecord && !startVouched && LibraryRecords.RETENTION_EVENT.equals(entry.eventType())) {
+                    Optional<LibraryRecords.RetainedStart> kept = LibraryRecords.parseRetention(entry.payloadJson());
+                    if (kept.isPresent() && kept.get().firstSequence() == firstSequence && kept.get().firstHash().equals(firstHash)) {
+                        startVouched = true;
+                    }
+                }
+
                 if (checkpoint != null && entry.sequence() == checkpoint.sequence()) {
                     if (!entry.hash().equals(checkpoint.hash())) {
                         return fail(VerificationFailure.CHECKPOINT_MISMATCH,
@@ -155,6 +197,28 @@ public final class LedgerVerifier {
             }
         }
 
+        if (startNeedsRecord && !startVouched) {
+            return withFirst(fail(VerificationFailure.SEQUENCE_GAP,
+                    "Entries 1 to " + (firstSequence - 1) + " are missing, and no retention record in the ledger accounts for their removal.",
+                    null, verified, redacted, lastSequence, lastHash, 1L), firstSequence);
+        }
+
+        if (!erased.isEmpty()) {
+            Map.Entry<Long, UUID> first = erased.firstEntry();
+            String others = erased.size() > 1 ? " " + (erased.size() - 1) + " other entries are in the same case." : "";
+            return new LedgerVerificationResult(false, VerificationFailure.UNRECORDED_REDACTION,
+                    "Entry " + first.getKey() + " (" + first.getValue() + "): the payload was removed without a redaction record, "
+                            + "so it was erased directly in the database, not through redactPayload." + others,
+                    first.getKey(), first.getValue(), verified, redacted, lastSequence, lastHash, firstSequence);
+        }
+
+        if (checkpoint != null && !checkpointSeen && verified > 0 && checkpoint.sequence() < firstSequence) {
+            return withFirst(fail(VerificationFailure.CHECKPOINT_MISMATCH,
+                    "The trusted checkpoint references sequence " + checkpoint.sequence() + ", which was removed by retention "
+                            + "(the ledger now starts at " + firstSequence + "). Use a newer checkpoint.",
+                    null, verified, redacted, lastSequence, lastHash, checkpoint.sequence()), firstSequence);
+        }
+
         if (checkpoint != null && !checkpointSeen) {
             return fail(VerificationFailure.TRUNCATED,
                     "The ledger ends at sequence " + lastSequence + " but the trusted checkpoint references sequence "
@@ -162,11 +226,24 @@ public final class LedgerVerifier {
                     null, verified, redacted, lastSequence, lastHash, lastSequence + 1);
         }
 
-        String message = verified == 0 ? "Ledger is empty." : verified + " entries verified up to sequence " + lastSequence + ".";
+        String message = verified == 0
+                ? "Ledger is empty."
+                : firstSequence > 1
+                        ? verified + " entries verified, from sequence " + firstSequence + " to " + lastSequence + "."
+                        : verified + " entries verified up to sequence " + lastSequence + ".";
+        if (startNeedsRecord) {
+            message += " Entries before " + firstSequence + " were removed by retention.";
+        }
         if (checkpoint == null && verified > 0) {
             message += " Without a trusted checkpoint, removal of the last entries cannot be detected.";
         }
-        return new LedgerVerificationResult(true, VerificationFailure.NONE, message, null, null, verified, redacted, lastSequence, lastHash);
+        return new LedgerVerificationResult(true, VerificationFailure.NONE, message, null, null, verified, redacted,
+                lastSequence, lastHash, firstSequence);
+    }
+
+    private static LedgerVerificationResult withFirst(LedgerVerificationResult r, long firstSequence) {
+        return new LedgerVerificationResult(r.valid(), r.failure(), r.message(), r.failedAtSequence(), r.failedEntryId(),
+                r.entriesVerified(), r.redactedPayloads(), r.lastSequence(), r.lastHash(), firstSequence);
     }
 
     /** Checks the signature and ledger id of a checkpoint. Returns an error message, or {@code null} when valid. */
