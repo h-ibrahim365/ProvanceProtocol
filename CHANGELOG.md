@@ -94,6 +94,11 @@ Ledger format 1 is unchanged: a ledger written by 0.1 verifies with 0.2. Retenti
 
 #### Common
 
+* docs/COMPLIANCE.md: how PROVANCE maps, control by control, to EU regulations (NIS2, DORA, GDPR, AI Act, Cyber
+  Resilience Act, eIDAS, MiFID II, European Health Data Space), national frameworks (Belgium, France, Germany, United
+  Kingdom, Australia), security standards (ISO/IEC 27001 and 42001, SOC 2, NIST, CIS, OWASP, IEC 62443 and
+  CLC/TS 50701, CSA CCM, MITRE ATT&CK) and sector rules (PCI DSS, HIPAA, 21 CFR Part 11, EU GMP Annex 11,
+  ICH E6(R3), SEC Rule 17a-4, NYDFS Part 500, SWIFT CSCF). SECURITY.md lists 0.2.x as supported.
 * Demo site: version 0.2.0 can be tried before its release (marked preview). Three new steps: an erasure with its
   redaction record next to a payload set to NULL in the database, an archive copy with the field-level comparison,
   and retention. The site's verifier applies the 0.2 rules. Links such as `#try-retention` open a step directly; the

@@ -117,6 +117,23 @@ automatically; where they go is your decision.
 The default signature is HMAC-SHA256. Whoever has the key can sign, so keep it in a secret store and
 restrict who can read it, or plug in a signer backed by your KMS so the application never sees the key.
 
+## Compliance
+
+PROVANCE covers the audit log integrity controls that security frameworks ask for. The [compliance mapping](docs/COMPLIANCE.md)
+lists them control by control, for more than 35 frameworks:
+
+* **EU**: NIS2, DORA, GDPR, AI Act, Cyber Resilience Act, eIDAS, MiFID II, European Health Data Space
+* **National**: CyberFundamentals (Belgium), CNIL, ANSSI and certified cash register software (France), GoBD and
+  BSI (Germany), NCSC CAF (United Kingdom), ISM (Australia)
+* **Standards**: ISO/IEC 27001, ISO/IEC 42001, SOC 2, NIST SP 800-53, NIST SP 800-171 and CMMC, NIST CSF 2.0,
+  CIS Controls, OWASP ASVS and Top 10, IEC 62443 and CLC/TS 50701 (railways), CSA Cloud Controls Matrix, MITRE ATT&CK
+* **Sectors**: PCI DSS (10.3.4, change detection on audit logs), HIPAA, 21 CFR Part 11, EU GMP Annex 11, ICH E6(R3),
+  SEC Rule 17a-4, NYDFS Part 500, SWIFT CSCF
+
+For each one: what PROVANCE covers, what is partial, and what
+stays your responsibility. Regulations apply to organizations, not to libraries: PROVANCE helps you comply, it does
+not make you compliant on its own.
+
 ## Using it
 
 The setup guides are per language:
@@ -163,6 +180,7 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 ## Documentation
 
 * [Interactive demo](https://provance.iamhakim.com): every step of the format, the attacks above and the 0.2 features, in the browser
+* [Compliance mapping](docs/COMPLIANCE.md): NIS2, DORA, GDPR, AI Act, ISO 27001, SOC 2, NIST, PCI DSS, HIPAA, 21 CFR Part 11 and more than 25 others
 * [Ledger format specification](docs/SPEC.md) and [test vectors](docs/test-vectors/) (with an independent Python checker)
 * [Archive copy and comparison](docs/ARCHIVE.md), [retention](docs/RETENTION.md) (0.2)
 * [.NET guide](src/dotnet/README.md) and [implementation notes](docs/ARCHITECTURE.md)
