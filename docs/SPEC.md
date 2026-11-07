@@ -106,6 +106,11 @@ sequence and, for each entry, checks in this order:
 
 The ledger is valid when every entry passes. The verifier reports the sequence and hash of the last entry.
 
+When the first entry read has a sequence greater than 1, older entries were removed from the store. The verifier
+then starts at that entry, skips check 3 for it alone, verifies the rest of the chain as above, and accepts the
+ledger only if a later entry is a retention record for that first entry (section 9). Otherwise entries 1 to the
+first sequence minus one are reported missing.
+
 ## 6. Redaction
 
 The payload may be deleted (for example to honor a GDPR erasure request) while every other field is kept.
@@ -113,6 +118,15 @@ A redacted entry still verifies, because the chain only depends on `payloadHash`
 entries and skip check 4 for them.
 
 Redaction removes the payload, not the fact that an event happened, its type, its time or its hash.
+
+Since 0.2, an erasure is authorized by a redaction record, appended before the payload is removed: an ordinary
+entry, chained and signed, with `eventType` `"provance.redaction"` and the payload
+`{"entryId":"<id>","sequence":<n>}` (canonical JSON) naming the erased entry. A verifier reports every entry whose
+payload is missing without a redaction record naming its sequence and id: the payload was deleted directly in the
+database, not through the library. Someone with write access but without the signing key cannot create the record.
+
+Ledgers erased by 0.1 libraries have no redaction records. Verifiers offer an explicit option to accept unrecorded
+redactions for them; with that option, a payload deleted in the database is counted as redacted, as in 0.1.
 
 ## 7. Checkpoints
 
@@ -145,3 +159,26 @@ another team. A checkpoint stored next to the ledger, with the same credentials,
 Format 1 assumes a single linear chain. Writers obtain linearity from the store, which must reject an
 entry whose `sequence` or `id` already exists. A writer that hits such a conflict reloads the head and
 reseals its pending entries on top of it. Timestamps are informational: they are not required to increase.
+
+## 9. Retention
+
+An application may remove old entries from the store it writes to, provided a full copy is kept elsewhere
+(an archive). Before removing entries, it appends a retention record, an ordinary entry, chained and signed
+like the others:
+
+* `eventType` is `"provance.retention"`. Event types starting with `provance.` are reserved for the records the
+  library writes (retention and redaction records): applications cannot write them.
+* the payload is `{"firstHash":"<hash>","firstSequence":<n>}` (canonical JSON), where `n` is the sequence of
+  the first entry that stays and `hash` its `hash`. `n` is at least 2.
+
+Then it deletes every entry with a sequence lower than `n`. Entry `n` and everything after it stay, so the record
+itself (appended at the head) is always after entry `n`.
+
+A verifier that finds a ledger starting at sequence `n > 1` accepts it only when the chain from `n` onwards
+verifies and contains a retention record whose payload names exactly `n` and the hash of entry `n`. Someone with
+write access but without the signing key cannot produce such a record, so deleting the first entries of a ledger
+stays detectable. The record's payload is never redacted.
+
+Retention changes nothing for the archive: it holds the whole chain from sequence 1, retention records included,
+and verifies like any ledger. A trusted checkpoint must reference an entry that is still in the store; a
+checkpoint of a removed entry cannot be checked against the store and is reported as such.

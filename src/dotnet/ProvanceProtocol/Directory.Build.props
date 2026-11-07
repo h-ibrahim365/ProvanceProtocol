@@ -1,7 +1,7 @@
 <Project>
   <!-- Shared settings for every project in the solution. Package specific settings live in each packable csproj. -->
   <PropertyGroup>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

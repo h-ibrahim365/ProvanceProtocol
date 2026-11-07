@@ -95,7 +95,36 @@ rewrite. Store the latest checkpoint somewhere your auditors can read it and pas
   provider.
 * The ledger is read page by page (`ReadBatchSize`), with short queries, so verifying a large ledger does not
   hold a long transaction.
-* Give the application account `SELECT` and `INSERT` on the table, plus `UPDATE` only for redaction. No `DELETE`.
+* Give the application account `SELECT` and `INSERT` on the table, plus `UPDATE` only for redaction, and `DELETE`
+  only if you use retention.
+* Named ledgers and archives use the built-in context with their own table (`provance_ledger_<name>`,
+  `provance_archive`), created outside `AddDbContext`, so several can live in one process and one database.
+* Retention deletes with `ExecuteDelete` on relational providers, page by page on the others.
+
+## Several ledgers
+
+Everything a ledger needs (options, store, signer, queue, writer, checkpoint publisher, archive copy, retention) is
+built once per ledger name, the first time the ledger is resolved. The default ledger has an empty name and is
+resolved as `ILedgerService`; named ledgers are keyed services (`[FromKeyedServices("billing")]`). Each ledger has
+its own writer and its own chain, so ledgers never wait for each other.
+
+## Archive copy
+
+The archive copy is a background service per ledger. The writer wakes it after each append; it also runs every
+`ArchiveInterval`. It reads the archive head, then copies primary entries from the next sequence, in batches of
+`MaxBatchSize`, after checking that each entry links to the previous archived one and verifies on its own. The
+archive's uniqueness constraint resolves races between instances, exactly as for the primary store. The copy
+service stops after the writer on shutdown, so the last entries are copied.
+
+`LedgerComparer` reads both copies in sequence order at the same time, so memory does not grow with the ledger.
+Payloads are compared by flattening both JSON documents into paths (`payload.data.amount`, `payload.items[2]`).
+
+## Retention
+
+`ApplyRetentionAsync` verifies the primary store, chooses the last entry older than `KeepFor` as the new first
+entry, checks the archive copy of everything before it, appends a `provance.retention` record (an ordinary signed
+entry, see SPEC.md section 9), then deletes. The verifier accepts a ledger that starts after sequence 1 only with
+such a record. Stores implement `IPrunableLedgerStore` to support it.
 
 ## Writing your own store
 
@@ -104,7 +133,8 @@ Implement `ILedgerStore`:
 * reject an entry whose `Sequence` or `Id` already exists, with `LedgerConcurrencyException`;
 * insert a batch in order (all or nothing is best, a prefix is accepted);
 * keep `PayloadJson` byte for byte and timestamps with at least millisecond precision;
-* return entries in ascending sequence from `ReadAsync`.
+* return entries in ascending sequence from `ReadAsync`;
+* for retention, also implement `IPrunableLedgerStore.DeleteBeforeAsync`.
 
 ## HTTP middleware
 

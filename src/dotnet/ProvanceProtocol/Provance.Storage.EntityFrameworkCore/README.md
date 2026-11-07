@@ -38,6 +38,26 @@ services
 Then add a migration as usual. Keep the unique index on `seq`: it is what keeps the chain linear when
 several instances write at the same time.
 
+## Archive copy (0.2)
+
+A second table, usually in another database or under another account, receives a copy of every entry in the
+background. The comparison between the two copies shows which field was changed and its original value.
+
+```csharp
+services
+    .AddProvance(configuration.GetSection("Provance"))
+    .UseEntityFrameworkCore(db => db.UseNpgsql(appConnectionString))
+    .UseEntityFrameworkCoreArchive(db => db.UseNpgsql(archiveConnectionString));   // table provance_archive
+```
+
+With your own context for the archive, use `UseEntityFrameworkCoreArchive<TArchiveContext>()`: a context maps one
+ledger table, so the archive needs a context type of its own.
+
+## Several ledgers (0.2)
+
+`AddProvance("billing", ...).UseEntityFrameworkCore(db => ...)` stores the named ledger in `provance_ledger_billing`.
+Set `TableName` to choose another name. With your own context, give each named ledger its own context type.
+
 ## Tested databases
 
 The test suite runs against SQLite, PostgreSQL and SQL Server. Other relational providers use the same
@@ -71,6 +91,10 @@ transaction. This combination is not covered by the test suite yet.
 ## Recommended database permissions
 
 The application account needs `SELECT` and `INSERT` on the ledger table, plus `UPDATE` only if you use
-payload redaction. Without `DELETE`, nobody can remove entries by mistake through the application.
+payload redaction, and `DELETE` only if you use retention (`Provance:Retention:KeepFor`). Without `DELETE`, nobody
+can remove entries by mistake through the application.
+
+On the archive table: `SELECT` and `INSERT`, plus `UPDATE` of the `payload` column for erasure requests. Never
+`DELETE`.
 
 Documentation: https://github.com/h-ibrahim365/ProvanceProtocol

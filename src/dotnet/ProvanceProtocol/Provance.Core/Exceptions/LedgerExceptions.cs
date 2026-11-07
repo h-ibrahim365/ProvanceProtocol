@@ -42,6 +42,19 @@ namespace Provance.Core.Exceptions
     }
 
     /// <summary>
+    /// An operation succeeded on the primary store but not on the archive copy, for example a payload erased in the
+    /// primary store that is still present in the archive. Retry it, or erase it in the archive by other means.
+    /// </summary>
+    public sealed class LedgerArchiveException : Exception
+    {
+        /// <summary>Creates the exception.</summary>
+        public LedgerArchiveException(string message, Exception? innerException = null)
+            : base(message, innerException)
+        {
+        }
+    }
+
+    /// <summary>
     /// Thrown by <see cref="Services.Interfaces.ILedgerService.VerifyAsync"/> when
     /// <see cref="LedgerVerificationOptions.ThrowOnFailure"/> is set and verification fails.
     /// </summary>

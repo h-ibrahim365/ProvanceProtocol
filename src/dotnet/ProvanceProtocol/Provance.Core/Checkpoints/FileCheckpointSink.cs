@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Provance.Core.Data;
 
 namespace Provance.Core.Checkpoints
@@ -30,20 +31,42 @@ namespace Provance.Core.Checkpoints
             Directory.CreateDirectory(folder);
             string path = Path.Combine(folder, FileName(checkpoint.Sequence));
 
-            if (File.Exists(path))
+            if (await IsValidAsync(path, checkpoint, cancellationToken).ConfigureAwait(false))
             {
                 return; // same head already published
             }
 
+            // Written to a temporary file, then renamed: a crash never leaves a truncated checkpoint behind.
+            string temp = Path.Combine(folder, $".{FileName(checkpoint.Sequence)}.{Guid.NewGuid():N}.tmp");
             try
             {
-                await using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                await using var writer = new StreamWriter(stream);
-                await writer.WriteAsync(checkpoint.ToJson().AsMemory(), cancellationToken).ConfigureAwait(false);
+                await using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    byte[] bytes = new UTF8Encoding(false).GetBytes(checkpoint.ToJson());
+                    await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                    stream.Flush(flushToDisk: true);
+                }
+
+                try
+                {
+                    File.Move(temp, path, overwrite: false);
+                }
+                catch (IOException) when (File.Exists(path))
+                {
+                    // Another instance published the same head concurrently, or an earlier crash left a broken file
+                    // (written before checkpoints were renamed into place): only a broken file is replaced.
+                    if (!await IsValidAsync(path, checkpoint, cancellationToken).ConfigureAwait(false))
+                    {
+                        File.Move(temp, path, overwrite: true);
+                    }
+                }
             }
-            catch (IOException) when (File.Exists(path))
+            finally
             {
-                // Another instance published the same head concurrently.
+                if (File.Exists(temp))
+                {
+                    File.Delete(temp);
+                }
             }
         }
 
@@ -56,16 +79,40 @@ namespace Provance.Core.Checkpoints
                 return null;
             }
 
-            string? latest = Directory.EnumerateFiles(folder, "*.json")
+            var candidates = Directory.EnumerateFiles(folder, "*.json")
                 .Select(path => (path, sequence: long.TryParse(Path.GetFileNameWithoutExtension(path), NumberStyles.None, CultureInfo.InvariantCulture, out long s) ? s : -1))
                 .Where(x => x.sequence > 0)
-                .OrderByDescending(x => x.sequence)
-                .Select(x => x.path)
-                .FirstOrDefault();
+                .OrderByDescending(x => x.sequence);
 
-            return latest is null
-                ? null
-                : LedgerCheckpoint.FromJson(await File.ReadAllTextAsync(latest, cancellationToken).ConfigureAwait(false));
+            foreach (var (path, _) in candidates)
+            {
+                var checkpoint = await TryReadAsync(path, cancellationToken).ConfigureAwait(false);
+                if (checkpoint is not null)
+                {
+                    return checkpoint; // a broken file is skipped rather than hiding the older valid ones
+                }
+            }
+            return null;
+        }
+
+        private static async Task<bool> IsValidAsync(string path, LedgerCheckpoint expected, CancellationToken ct)
+        {
+            var existing = await TryReadAsync(path, ct).ConfigureAwait(false);
+            return existing is not null
+                && existing.Sequence == expected.Sequence
+                && string.Equals(existing.LedgerId, expected.LedgerId, StringComparison.Ordinal);
+        }
+
+        private static async Task<LedgerCheckpoint?> TryReadAsync(string path, CancellationToken ct)
+        {
+            try
+            {
+                return LedgerCheckpoint.FromJson(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or System.Text.Json.JsonException or FormatException or IOException)
+            {
+                return null;
+            }
         }
 
         private static string FileName(long sequence) => sequence.ToString("D16", CultureInfo.InvariantCulture) + ".json";

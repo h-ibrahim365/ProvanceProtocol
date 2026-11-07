@@ -5,6 +5,53 @@ a minor version may contain breaking changes.
 
 ## Unreleased
 
+### Security review fixes (Java 0.1.1, Python 0.1.1, and .NET 0.2.0)
+
+From an external review of the code.
+
+* Python: `add_entry_async` no longer blocks the event loop when the queue is full (`WAIT` behavior). It waits for
+  room asynchronously, so a timeout around it, such as the middleware's `audit_timeout`, also bounds that wait.
+  Before, a full queue (for example during a slow database) froze every request of the worker.
+* Python and Java: an entry submitted at the exact moment the ledger was closing could be accepted after the writer
+  had stopped and never complete. Accepting entries and stopping the writer are now synchronized.
+* .NET, Java and Python: checkpoint files are written to a temporary file, then linked into place, so a crash can no
+  longer leave a truncated checkpoint that blocks that sequence forever. An existing file that does not parse is
+  replaced, and reading the latest checkpoint skips such a file.
+* .NET 0.2 (Java and Python with their 0.2): an erasure through the library appends a signed `provance.redaction`
+  record naming the erased entry, and verification fails with `UnrecordedRedaction` when a payload is missing without
+  one. Before, `UPDATE ... SET payload = NULL` in the database looked like a legitimate GDPR erasure. Ledgers erased
+  with 0.1 verify with `AcceptUnrecordedRedactions = true`. See docs/SPEC.md, section 6.
+
+### .NET 0.2.0 (in progress; Java and Python follow, the three ship together)
+
+Ledger format 1 is unchanged: a ledger written by 0.1 verifies with 0.2. Retention adds a reserved event type
+(`provance.retention`, docs/SPEC.md section 9) that verifiers must know before reading a store that used retention.
+
+* Several ledgers in one application: `AddProvance(name, configuration)` and `AddProvance(name, configure)`, each
+  with its own options, store, keys, archive and checkpoints, injected as a keyed service
+  (`[FromKeyedServices("billing")] ILedgerService`). `AddHttpAuditing` on a named ledger's builder sends the HTTP
+  entries there (`HttpAuditOptions.LedgerName`).
+* Archive copy: `UseArchive(store)`, `UseEntityFrameworkCoreArchive(db => ...)`. Every entry is copied to a second
+  store in the background, after being checked; an entry modified before it was copied is not propagated and
+  `GetArchiveStatus()` reports it. `RedactPayloadAsync` erases the payload in both copies and throws
+  `LedgerArchiveException` if the archive refuses.
+* Field-level comparison: `CompareWithArchiveAsync()` and `LedgerComparer` list, for every changed entry, the fields
+  that differ with their original and current values, and which copy still verifies (docs/ARCHIVE.md).
+* Retention: `Retention:KeepFor` (or `ApplyRetentionAsync`) removes old entries from the primary store once the
+  archive holds an identical copy, after appending a signed retention record; `VerifyAsync` accepts the shortened
+  ledger and still detects entries deleted without such a record (docs/RETENTION.md). `IPrunableLedgerStore` is
+  implemented by the in-memory and Entity Framework Core stores.
+* `LedgerJsonLines` and `JsonLinesLedgerFile`: export and import in the JSON Lines format of the Java and Python
+  libraries, to verify or compare an export.
+* `LedgerVerificationResult.FirstSequence`.
+* `LedgerCheckpoint.ToJson()` writes `createdAt` as `2026-11-07T09:00:06.789Z`, like Java and Python, instead of
+  `+00:00`. `FromJson` reads both. The demo site's verifier now accepts both too.
+* Event types starting with `provance.` are reserved and rejected by `AddEntryAsync`.
+* Cross-language fixtures: ledgers written by the Python and .NET libraries (docs/test-vectors/ledger-python,
+  ledger-dotnet) next to the Java one; the .NET suite verifies all three.
+* `ILedgerService` gained members (with default implementations) and `IProvanceBuilder` gained `LedgerName`.
+  Custom implementations of these interfaces keep compiling.
+
 * POM metadata: the project and SCM URLs of the modules pointed to `.../ProvanceProtocol/provance-core` (and so on),
   which does not exist. They now point to the repository. No code change.
 * Release tags: from 0.2.0 the .NET packages are released from a tag `dotnet-vX.Y.Z`, like `java-vX.Y.Z` and

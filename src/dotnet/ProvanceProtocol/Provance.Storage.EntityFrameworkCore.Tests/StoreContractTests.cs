@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Provance.Core.Comparison;
 using Provance.Core.Data;
 using Provance.Core.Exceptions;
 using Provance.Core.Services.Interfaces;
@@ -25,11 +26,11 @@ namespace Provance.Storage.EntityFrameworkCore.Tests
 
         private static string NewTable() => "t_" + Guid.NewGuid().ToString("N")[..12];
 
-        private async Task<Instance> StartAsync(string table, int readBatchSize = 1000)
+        private async Task<Instance> StartAsync(string table, int readBatchSize = 1000, Action<IProvanceBuilder>? build = null, Action<IServiceCollection>? register = null)
         {
             var services = new ServiceCollection();
             services.AddLogging();
-            services.AddProvance(o =>
+            var builder = services.AddProvance(o =>
             {
                 o.LedgerId = LedgerId;
                 o.SecretKey = Secret;
@@ -40,6 +41,8 @@ namespace Provance.Storage.EntityFrameworkCore.Tests
                 o.TableName = table;
                 o.ReadBatchSize = readBatchSize;
             });
+            build?.Invoke(builder);
+            register?.Invoke(services);
 
             var provider = services.BuildServiceProvider();
             var hosted = provider.GetServices<IHostedService>().ToList();
@@ -176,6 +179,91 @@ namespace Provance.Storage.EntityFrameworkCore.Tests
             var tampered = await instanceB.Ledger.VerifyAsync();
             Assert.Equal(VerificationFailure.PayloadHashMismatch, tampered.Failure);
             Assert.Equal(target.Sequence, tampered.FailedAtSequence);
+        }
+
+        [Fact]
+        public async Task Entries_are_copied_to_an_archive_table_and_changes_show_their_original_value()
+        {
+            string table = NewTable();
+            await using var instance = await StartAsync(table, build: b => b.UseEntityFrameworkCoreArchive(ConfigureDatabase, o => o.TableName = NewTable()));
+            var ledger = instance.Ledger;
+            for (int i = 1; i <= 3; i++)
+            {
+                await ledger.AddEntryAsync("REFUND", new AuditedPayload { Data = new Dictionary<string, object?> { ["amount"] = "49.90", ["order"] = i } });
+            }
+
+            var copied = await ledger.CompareWithArchiveAsync();
+            Assert.True(copied.IsIdentical, copied.Describe());
+            Assert.Equal(3, copied.Compared);
+
+            await using (var scope = instance.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ProvanceLedgerDbContext>();
+                var row = await db.Entries.SingleAsync(r => r.Sequence == 2);
+                row.PayloadJson = row.PayloadJson!.Replace("49.90", "4990.00");
+                await db.SaveChangesAsync();
+            }
+
+            var comparison = await ledger.CompareWithArchiveAsync();
+            var difference = Assert.Single(comparison.Differences);
+            Assert.Equal(2, difference.Sequence);
+            Assert.Equal(OriginalCopy.Archive, difference.Original);
+            var field = Assert.Single(difference.Fields);
+            Assert.Equal("payload.data.amount", field.Field);
+            Assert.Equal("\"49.90\"", field.ArchiveValue);
+        }
+
+        [Fact]
+        public async Task Retention_deletes_old_rows_and_the_ledger_still_verifies()
+        {
+            var clock = new ManualClock(new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero));
+            await using var instance = await StartAsync(NewTable(),
+                build: b => b.UseEntityFrameworkCoreArchive(ConfigureDatabase, o => o.TableName = NewTable()),
+                register: s => s.AddSingleton<TimeProvider>(clock));
+            var ledger = instance.Ledger;
+            for (int i = 1; i <= 6; i++)
+            {
+                if (i == 5) clock.Now = clock.Now.AddDays(10);
+                await ledger.AddEntryAsync("EVENT", new AuditedPayload { Description = $"#{i}" });
+            }
+
+            var result = await ledger.ApplyRetentionAsync(TimeSpan.FromDays(7));
+
+            Assert.True(result.Applied, result.Message);
+            Assert.Equal(3, result.RemovedEntries);
+            Assert.Equal(4, result.FirstSequence);
+            var verification = await ledger.VerifyAsync(new LedgerVerificationOptions { TrustedCheckpoint = result.Checkpoint });
+            Assert.True(verification.IsValid, verification.Message);
+            Assert.Equal(4, verification.FirstSequence);
+            var comparison = await ledger.CompareWithArchiveAsync();
+            Assert.True(comparison.IsIdentical, comparison.Describe());
+            Assert.Equal(3, comparison.RemovedByRetention);
+        }
+
+        [Fact]
+        public async Task Named_ledgers_use_their_own_tables()
+        {
+            await using var instance = await StartAsync(NewTable(), register: s =>
+                s.AddProvance("billing", o => { o.LedgerId = "ef-billing"; o.SecretKey = Secret; })
+                 .UseEntityFrameworkCore(ConfigureDatabase, o => o.TableName = NewTable()));
+
+            await instance.Ledger.AddEntryAsync("DEFAULT", new AuditedPayload());
+            var billing = instance.Services.GetRequiredKeyedService<ILedgerService>("billing");
+            var invoice = await billing.AddEntryAsync("INVOICE", new AuditedPayload());
+            await billing.AddEntryAsync("INVOICE", new AuditedPayload());
+
+            Assert.Equal(1, invoice.Sequence);
+            Assert.True((await instance.Ledger.VerifyAsync()).IsValid);
+            var billingResult = await billing.VerifyAsync();
+            Assert.True(billingResult.IsValid, billingResult.Message);
+            Assert.Equal(2, billingResult.EntriesVerified);
+        }
+
+        private sealed class ManualClock(DateTimeOffset start) : TimeProvider
+        {
+            public DateTimeOffset Now { get; set; } = start;
+
+            public override DateTimeOffset GetUtcNow() => Now;
         }
 
         private sealed record HttpLikePayload : AuditedPayload

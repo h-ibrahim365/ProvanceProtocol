@@ -41,6 +41,8 @@ final class LedgerWriter implements Runnable {
 
     private volatile boolean accepting = true;
     private volatile boolean aborted;
+    /** An entry is queued only while accepting, never after the writer stopped. */
+    private final Object acceptLock = new Object();
 
     private Head head; // null: must be reloaded from the store before the next seal (writer thread only)
 
@@ -58,20 +60,9 @@ final class LedgerWriter implements Runnable {
 
     /** Called by producers. Blocks when the queue is full and the behavior is {@link QueueFullBehavior#WAIT}. */
     void enqueue(PendingEntry entry) {
-        if (!accepting) {
-            throw stopped();
-        }
-        if (options.getQueueFullBehavior() == QueueFullBehavior.FAIL_FAST) {
-            if (!queue.offer(entry)) {
-                throw accepting ? new LedgerOverloadedException("PROVANCE queue is full.") : stopped();
-            }
-            return;
-        }
         try {
-            while (!queue.offer(entry, POLL_MILLIS, TimeUnit.MILLISECONDS)) {
-                if (!accepting) {
-                    throw stopped();
-                }
+            while (!tryEnqueue(entry)) {
+                Thread.sleep(POLL_MILLIS / 10 + 1);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -79,14 +70,34 @@ final class LedgerWriter implements Runnable {
         }
     }
 
+    /** Queues without blocking; {@code false} when the queue is full and the behavior is {@link QueueFullBehavior#WAIT}. */
+    private boolean tryEnqueue(PendingEntry entry) {
+        synchronized (acceptLock) {
+            if (!accepting) {
+                throw stopped();
+            }
+            if (queue.offer(entry)) {
+                return true;
+            }
+            if (options.getQueueFullBehavior() == QueueFullBehavior.FAIL_FAST) {
+                throw new LedgerOverloadedException("PROVANCE queue is full.");
+            }
+            return false;
+        }
+    }
+
     /** Stops accepting new entries. Entries already queued are still processed. */
     void stopAccepting() {
-        accepting = false;
+        synchronized (acceptLock) {
+            accepting = false;
+        }
     }
 
     /** Gives up: the current batch and every queued entry fail. */
     void abort() {
-        accepting = false;
+        synchronized (acceptLock) {
+            accepting = false;
+        }
         aborted = true;
     }
 
@@ -124,7 +135,9 @@ final class LedgerWriter implements Runnable {
         } catch (InterruptedException e) {
             // Shutdown.
         } finally {
-            accepting = false;
+            synchronized (acceptLock) {
+                accepting = false;
+            }
             PendingEntry leftover;
             while ((leftover = queue.poll()) != null) {
                 leftover.fail(new LedgerUnavailableException("PROVANCE writer stopped before the entry was written."));

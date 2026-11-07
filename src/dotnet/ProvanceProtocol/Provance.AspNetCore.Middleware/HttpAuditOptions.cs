@@ -19,6 +19,13 @@ namespace Provance.AspNetCore.Middleware
     /// <summary>Options of the HTTP audit middleware. Privacy sensitive fields are off by default.</summary>
     public sealed class HttpAuditOptions
     {
+        /// <summary>
+        /// Ledger that receives the entries: empty (default) for the default ledger, otherwise the name of a ledger
+        /// registered with <c>AddProvance(name, ...)</c>. Set automatically when <c>AddHttpAuditing</c> is called on
+        /// the builder of a named ledger.
+        /// </summary>
+        public string LedgerName { get; set; } = string.Empty;
+
         /// <summary>Behavior when the ledger cannot be written. Default <see cref="HttpAuditFailureMode.LogAndContinue"/>.</summary>
         public HttpAuditFailureMode FailureMode { get; set; } = HttpAuditFailureMode.LogAndContinue;
 

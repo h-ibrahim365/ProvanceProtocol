@@ -24,5 +24,6 @@
 
   <ItemGroup>
     <None Include="..\..\..\..\docs\test-vectors\v1.json" Link="TestVectors\v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\..\docs\test-vectors\ledger-*\*.*" Link="TestVectors\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

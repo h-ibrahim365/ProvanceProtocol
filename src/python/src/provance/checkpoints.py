@@ -7,7 +7,9 @@ A checkpoint is only as trustworthy as the place it is stored: use storage the a
 from __future__ import annotations
 
 import logging
+import os
 import threading
+import uuid
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol, Sequence
@@ -39,20 +41,55 @@ class FileCheckpointSink:
         folder = _folder(self.directory, checkpoint.ledger_id)
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{checkpoint.sequence:016d}.json"
+        if _is_valid(path, checkpoint):
+            return  # same head already published, possibly by another instance
+
+        # Written to a temporary file, then linked into place: a crash never leaves a truncated checkpoint behind.
+        temp = folder / f".{path.name}.{uuid.uuid4().hex}.tmp"
         try:
-            with open(path, "x", encoding="utf-8", newline="\n") as f:  # "x": fails if the file exists
+            with open(temp, "x", encoding="utf-8", newline="\n") as f:
                 f.write(checkpoint.to_json())
-        except FileExistsError:
-            pass  # same head already published, possibly by another instance
+                f.flush()
+                os.fsync(f.fileno())
+            try:
+                os.link(temp, path)  # fails if the file exists, unlike os.replace
+            except FileExistsError:
+                # Published concurrently, or a broken file left by a crash of an older version: only the latter is replaced.
+                if not _is_valid(path, checkpoint):
+                    os.replace(temp, path)
+            except OSError:
+                # File systems without hard links: exclusive creation, then an atomic replace of our own file.
+                if not path.exists() or not _is_valid(path, checkpoint):
+                    os.replace(temp, path)
+        finally:
+            try:
+                temp.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def read_latest_checkpoint(directory: str | Path, ledger_id: str) -> LedgerCheckpoint | None:
-    """Reads the checkpoint with the highest sequence written by a file sink, or ``None``."""
+    """Reads the checkpoint with the highest sequence written by a file sink, or ``None``. A file that does not parse
+    (left by a crash) is skipped rather than hiding the older valid ones."""
     folder = _folder(Path(directory), ledger_id)
     files = [f for f in folder.glob("*.json") if f.stem.isdigit()] if folder.is_dir() else []
-    if not files:
+    for file in sorted(files, key=lambda f: int(f.stem), reverse=True):
+        checkpoint = _try_read(file)
+        if checkpoint is not None:
+            return checkpoint
+    return None
+
+
+def _try_read(path: Path) -> LedgerCheckpoint | None:
+    try:
+        return LedgerCheckpoint.from_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
         return None
-    return LedgerCheckpoint.from_json(max(files, key=lambda f: int(f.stem)).read_text(encoding="utf-8"))
+
+
+def _is_valid(path: Path, expected: LedgerCheckpoint) -> bool:
+    existing = _try_read(path)
+    return existing is not None and existing.sequence == expected.sequence and existing.ledger_id == expected.ledger_id
 
 
 def _folder(directory: Path, ledger_id: str) -> Path:

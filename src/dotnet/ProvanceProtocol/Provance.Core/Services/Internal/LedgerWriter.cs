@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Provance.Core.Cryptography;
 using Provance.Core.Data;
 using Provance.Core.Exceptions;
@@ -30,6 +29,7 @@ namespace Provance.Core.Services.Internal
         private readonly TimeProvider _time;
         private readonly ILogger<LedgerWriter> _logger;
         private readonly string _genesisHash;
+        private readonly Action? _onAppended;
 
         private ChainHead? _head; // null: must be reloaded from the store before the next seal
 
@@ -37,17 +37,19 @@ namespace Provance.Core.Services.Internal
             EntryQueue queue,
             ILedgerStore store,
             ILedgerSigner signer,
-            IOptions<ProvanceOptions> options,
+            ProvanceOptions options,
             TimeProvider time,
-            ILogger<LedgerWriter> logger)
+            ILogger<LedgerWriter> logger,
+            Action? onAppended = null)
         {
             _queue = queue;
             _store = store;
             _signer = signer;
-            _options = options.Value;
+            _options = options;
             _time = time;
             _logger = logger;
             _genesisHash = _options.EffectiveGenesisHash;
+            _onAppended = onAppended;
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
@@ -150,6 +152,7 @@ namespace Provance.Core.Services.Internal
                     }
                     var last = sealedEntries[^1];
                     _head = new ChainHead(last.Sequence, last.Hash);
+                    _onAppended?.Invoke();
                     return;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -171,7 +174,12 @@ namespace Provance.Core.Services.Internal
 
                 if (sealedEntries is not null)
                 {
+                    int before = pending.Count;
                     await AcknowledgePersistedAsync(pending, ct).ConfigureAwait(false);
+                    if (pending.Count < before)
+                    {
+                        _onAppended?.Invoke();
+                    }
                     if (pending.Count == 0)
                     {
                         return;
