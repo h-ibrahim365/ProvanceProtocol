@@ -149,12 +149,11 @@ export const VERSIONS: Version[] = [
   },
   {
     id: "0.2.0",
-    label: "0.2.0 (preview)",
-    released: null,
-    preview: true,
+    label: "0.2.0",
+    released: "2026-11-07",
     formatVersion: 1,
     recordedRedactions: true,
-    summary: "Ready in .NET, Java and Python, released together. Same ledger format.",
+    summary: "Archive copy, field-level comparison, retention and recorded erasures, in .NET, Java and Python. Same ledger format.",
     changes: [
       "Several ledgers in one application",
       "Erasures leave a signed record: a payload set to NULL in the database is detected",
