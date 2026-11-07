@@ -1,0 +1,15 @@
+[Unit]
+Description=PROVANCE demo site, GitHub webhook deploy listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=provance
+Group=provance
+ExecStart=/usr/bin/webhook -hooks /etc/webhook/provance-hooks.json -ip 127.0.0.1 -port 9002 -verbose
+Restart=always
+RestartSec=5
+SyslogIdentifier=provance-webhook
+
+[Install]
+WantedBy=multi-user.target

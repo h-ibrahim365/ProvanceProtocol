@@ -1,0 +1,200 @@
+:root {
+  /* Ledger paper, blue-black ink, the red double rule of account books. */
+  --paper: #e8eee6;
+  --sheet: #f6f8f3;
+  --ink: #16243a;
+  --ink-soft: #4b5a6c;
+  --rule: #c3cfc1;
+  --rule-strong: #93a693;
+  --red: #b3261e;
+  --red-wash: #f6dcd8;
+  --seal: #1f6b45;
+  --seal-wash: #d6ebdc;
+  --link: #275b86;
+  --focus: #275b86;
+
+  --chip-l: 42%;
+  --chip-s: 52%;
+
+  --font: "Schibsted Grotesk Variable", system-ui, sans-serif;
+  --mono: "Martian Mono Variable", ui-monospace, monospace;
+
+  /* 17px base, major third */
+  --t-xs: 0.75rem;
+  --t-s: 0.875rem;
+  --t-m: 1.0625rem;
+  --t-l: 1.33rem;
+  --t-xl: 1.66rem;
+  --t-xxl: clamp(1.9rem, 1.4rem + 2vw, 2.6rem);
+
+  --radius: 6px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1a17;
+    --sheet: #15231f;
+    --ink: #dfe8e0;
+    --ink-soft: #9fb0a6;
+    --rule: #2b3d36;
+    --rule-strong: #46605a;
+    --red: #ef7a6e;
+    --red-wash: #3a1d1b;
+    --seal: #63c38f;
+    --seal-wash: #183427;
+    --link: #8bbbe3;
+    --focus: #8bbbe3;
+    --chip-l: 68%;
+    --chip-s: 48%;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #0f1a17;
+  --sheet: #15231f;
+  --ink: #dfe8e0;
+  --ink-soft: #9fb0a6;
+  --rule: #2b3d36;
+  --rule-strong: #46605a;
+  --red: #ef7a6e;
+  --red-wash: #3a1d1b;
+  --seal: #63c38f;
+  --seal-wash: #183427;
+  --link: #8bbbe3;
+  --focus: #8bbbe3;
+  --chip-l: 68%;
+  --chip-s: 48%;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--t-m);
+  line-height: 1.5;
+  font-feature-settings: "ss01";
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.15;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--link);
+  text-underline-offset: 0.18em;
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  font-variant-ligatures: none;
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  border: 1.5px solid var(--ink);
+  background: var(--ink);
+  color: var(--sheet);
+  border-radius: var(--radius);
+  padding: 0.5em 0.95em;
+  font-weight: 600;
+  font-size: var(--t-s);
+  cursor: pointer;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.btn:hover {
+  filter: brightness(1.15);
+}
+
+.btn.quiet {
+  background: transparent;
+  color: var(--ink);
+}
+
+.btn.quiet:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  filter: none;
+}
+
+.btn.danger {
+  border-color: var(--red);
+  background: transparent;
+  color: var(--red);
+}
+
+.btn.danger:hover {
+  background: var(--red-wash);
+  filter: none;
+}
+
+/* fingers need bigger targets than a mouse pointer */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 2.75rem;
+  }
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

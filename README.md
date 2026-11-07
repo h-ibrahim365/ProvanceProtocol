@@ -175,9 +175,13 @@ Planned, in no fixed order. Feedback on what matters most to you is welcome in t
 
 * **Several ledgers in one application**, for example one per tenant, or one for audit and one for billing
   (keyed services in .NET, named beans in Spring).
-* **Asynchronous mirror to a second store**, for example a database owned by another team. Each entry
-  verifies on its own, so the copy can be checked independently, and comparing the two copies reveals an
-  edit made in either one.
+* **Asynchronous mirror to a second store**, for example an archive database or a database owned by another
+  team, where the application account can only insert. Each entry verifies on its own, so the copy can be
+  checked independently.
+* **Field-level diff between the two copies.** Verification says which entry was changed; it cannot say what
+  the original value was, because the ledger only keeps its hash. With a mirror, the copy that still verifies
+  is the original, and a diff shows the changed fields with their original and current values
+  (`provance diff` in the command line tool).
 * **ECDSA signer**, so that an auditor can verify a ledger with the public key only.
 * **Querying** entries by actor, event type or period, with the matching indexes.
 * **Health checks and metrics** (OpenTelemetry).

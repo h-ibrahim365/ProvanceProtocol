@@ -124,3 +124,29 @@ jobs:
           python -m build
           twine check --strict dist/*
 
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Demo site (shared vectors, Java ledger fixture, type check, build)
+        working-directory: site
+        run: |
+          npm ci
+          npm test
+          npm run check
+          npm run build
+
+      - name: Status service (format, lint, tests)
+        working-directory: site/server
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test

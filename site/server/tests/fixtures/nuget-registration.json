@@ -1,0 +1,19 @@
+{
+  "@id": "https://api.nuget.org/v3/registration5-gz-semver2/provance.core/index.json",
+  "count": 1,
+  "items": [
+    {
+      "@id": "https://api.nuget.org/v3/registration5-gz-semver2/provance.core/index.json#page/0.0.1/0.2.0-alpha",
+      "count": 5,
+      "lower": "0.0.1",
+      "upper": "0.2.0-alpha",
+      "items": [
+        { "catalogEntry": { "id": "Provance.Core", "version": "0.0.1", "listed": true, "published": "2025-11-23T10:00:00.000+00:00" } },
+        { "catalogEntry": { "id": "Provance.Core", "version": "0.0.2", "listed": true, "published": "2025-11-25T10:00:00.000+00:00" } },
+        { "catalogEntry": { "id": "Provance.Core", "version": "0.0.3", "listed": true, "published": "2025-11-28T10:00:00.000+00:00" } },
+        { "catalogEntry": { "id": "Provance.Core", "version": "0.1.0", "listed": true, "published": "2026-11-06T14:02:11.297+00:00" } },
+        { "catalogEntry": { "id": "Provance.Core", "version": "0.2.0-alpha", "listed": false, "published": "1900-01-01T00:00:00+00:00" } }
+      ]
+    }
+  ]
+}

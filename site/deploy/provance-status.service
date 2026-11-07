@@ -1,0 +1,32 @@
+[Unit]
+Description=PROVANCE release status for the demo site
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/provance/bin/provance-status
+EnvironmentFile=-/etc/provance-status.env
+Environment=PROVANCE_STATUS_ADDR=127.0.0.1:8787
+DynamicUser=yes
+Restart=on-failure
+RestartSec=5
+
+# The service only makes outgoing HTTPS requests and listens on localhost.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target
