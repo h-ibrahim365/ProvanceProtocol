@@ -4,8 +4,9 @@
 
 | Version | Supported |
 | :------ | :-------- |
-| 0.1.x   | Yes |
-| 0.0.x   | No. Upgrade to 0.1.x (see docs/MIGRATION.md). |
+| 0.2.x   | Yes |
+| 0.1.x   | Critical security fixes only. Upgrade to 0.2.x (see CHANGELOG.md). |
+| 0.0.x   | No. Upgrade to 0.2.x (see docs/MIGRATION.md). |
 
 ## Reporting a vulnerability
 
