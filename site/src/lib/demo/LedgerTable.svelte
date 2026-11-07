@@ -373,8 +373,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.2rem 0.9rem 0.8rem 3.5rem;
+    gap: 0.5rem 0.65rem;
+    padding: 0.75rem 0.9rem 0.75rem 3.5rem;
   }
 
   .tools .btn {
@@ -385,7 +385,7 @@
   .tools-label {
     font-size: var(--t-xs);
     color: var(--ink-soft);
-    margin-right: 0.2rem;
+    margin-right: 0.25rem;
   }
 
   .tools textarea {
