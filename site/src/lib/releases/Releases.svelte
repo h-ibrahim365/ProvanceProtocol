@@ -45,6 +45,8 @@
   }
 
   const SOURCES: Record<string, string> = { github: "GitHub", nuget: "NuGet", maven: "Maven Central", pypi: "PyPI" };
+  /** A source that failed once but answered within this delay is shown as retrying, not as down. */
+  const STALE_AFTER = 5 * 60 * 1000;
 </script>
 
 <div class="releases">
@@ -143,8 +145,16 @@
 
     <footer class="sources">
       {#each Object.entries(snapshot.sources) as [name, state] (name)}
-        <span class:down={!state.ok}>
-          {SOURCES[name] ?? name}: {state.ok ? `checked ${ago(state.checkedAt, now)}` : `not answering (${state.error})`}
+        {@const recent = !!state.checkedAt && now - Date.parse(state.checkedAt) < STALE_AFTER}
+        <span class:down={!state.ok && !recent} class:retrying={!state.ok && recent}>
+          {SOURCES[name] ?? name}:
+          {#if state.ok}
+            checked {ago(state.checkedAt, now)}
+          {:else if recent}
+            checked {ago(state.checkedAt, now)}, last try failed ({state.error}), retrying
+          {:else}
+            not answering ({state.error})
+          {/if}
         </span>
       {/each}
     </footer>
@@ -368,6 +378,11 @@
 
   .sources .down {
     color: var(--red);
+  }
+
+  .sources .retrying {
+    color: var(--ink-soft);
+    font-style: italic;
   }
 
   .offline {

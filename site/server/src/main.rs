@@ -153,7 +153,14 @@ async fn poll(app: Arc<App>) {
 async fn refresh_github(app: &App) {
     let base = format!("https://api.github.com/repos/{}", app.repository);
     let result = async {
-        let runs = sources::runs(&github(app, &format!("{base}/actions/runs?per_page=40")).await?);
+        // exclude_pull_requests leaves out a field we do not read and makes the endpoint lighter for GitHub
+        let runs = sources::runs(
+            &github(
+                app,
+                &format!("{base}/actions/runs?per_page=40&exclude_pull_requests=true"),
+            )
+            .await?,
+        );
         let releases =
             sources::releases(&github(app, &format!("{base}/releases?per_page=30")).await?);
         Ok::<_, String>((runs, releases))
@@ -170,16 +177,27 @@ async fn refresh_github(app: &App) {
     }
 }
 
+/// GitHub's API sometimes answers 502, 503 or 504 for a single request: one retry after a short pause
+/// avoids reporting GitHub as down for a hiccup.
 async fn github(app: &App, url: &str) -> Result<Value, String> {
-    let mut request = app
-        .http
-        .get(url)
-        .header(header::ACCEPT, "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2022-11-28");
-    if let Some(token) = &app.token {
-        request = request.bearer_auth(token);
+    let request = || {
+        let mut request = app
+            .http
+            .get(url)
+            .header(header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(token) = &app.token {
+            request = request.bearer_auth(token);
+        }
+        request
+    };
+    match json(request()).await {
+        Err(e) if e.starts_with("HTTP 5") || e.contains("timed out") => {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            json(request()).await
+        }
+        other => other,
     }
-    json(request).await
 }
 
 async fn refresh_registries(app: &App) {
