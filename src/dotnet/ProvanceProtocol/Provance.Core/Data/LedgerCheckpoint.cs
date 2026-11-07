@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Provance.Core.Cryptography;
 
 namespace Provance.Core.Data
 {
@@ -26,7 +28,8 @@ namespace Provance.Core.Data
         /// <summary>Hash of the head entry at checkpoint time.</summary>
         public required string Hash { get; init; }
 
-        /// <summary>UTC creation time, truncated to the millisecond.</summary>
+        /// <summary>UTC creation time, truncated to the millisecond. Written as <c>2026-11-07T09:00:06.789Z</c>, like the other libraries.</summary>
+        [JsonConverter(typeof(UtcMillisecondsConverter))]
         public required DateTimeOffset CreatedAt { get; init; }
 
         /// <summary>Key used to sign the checkpoint.</summary>
@@ -38,9 +41,20 @@ namespace Provance.Core.Data
         /// <summary>Serializes the checkpoint to JSON (camelCase).</summary>
         public string ToJson() => JsonSerializer.Serialize(this, ProvanceProtocol.WebSerializerOptions);
 
-        /// <summary>Parses a checkpoint produced by <see cref="ToJson"/>.</summary>
+        /// <summary>Parses a checkpoint written by any PROVANCE library (offset <c>Z</c> or <c>+00:00</c>).</summary>
         public static LedgerCheckpoint FromJson(string json)
             => JsonSerializer.Deserialize<LedgerCheckpoint>(json, ProvanceProtocol.WebSerializerOptions)
                ?? throw new FormatException("Checkpoint JSON is empty.");
+
+        /// <summary>Writes the canonical timestamp format; reads any ISO 8601 date and time.</summary>
+        private sealed class UtcMillisecondsConverter : JsonConverter<DateTimeOffset>
+        {
+            public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+                => DateTimeOffset.Parse(reader.GetString() ?? throw new JsonException("createdAt is null."),
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+
+            public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options)
+                => writer.WriteStringValue(LedgerHashing.FormatTimestamp(value));
+        }
     }
 }

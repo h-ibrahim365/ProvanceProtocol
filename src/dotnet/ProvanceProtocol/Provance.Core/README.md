@@ -65,6 +65,11 @@ Any serializable object can be a payload. Write amounts and large numbers as str
 * Payload redaction for GDPR erasure requests, without breaking the chain.
 * Key rotation, and an `ILedgerSigner` interface for keys held in a KMS.
 * Automatic checkpoints to any sink (`AddCheckpointSink`, `AddFileCheckpoints`).
+* Several ledgers in one application: `AddProvance("billing", ...)`, injected with `[FromKeyedServices("billing")]`.
+* An archive copy of every entry in a second store, and a field-level comparison of the two copies
+  (`UseArchive`, `CompareWithArchiveAsync`): when an entry was changed, you see its original value.
+* Retention: old entries leave the primary store once archived, and the ledger still verifies (`Retention:KeepFor`).
+* Export and import in the JSON Lines format shared with the Java and Python libraries (`LedgerJsonLines`).
 * A published format with test vectors, so a ledger can be verified outside .NET.
 
 ## Related packages

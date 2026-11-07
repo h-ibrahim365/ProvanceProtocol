@@ -1,14 +1,15 @@
 # Cross-language ledger fixture
 
 A small ledger written by the Java library (`provance-core` 0.1.0), exported as JSON Lines, with a checkpoint of
-its head. Every implementation must verify it: the Python test suite does, and the .NET and Java suites can read
-the same files.
+its head. Every implementation must verify it, like the ledgers written by [Python](../ledger-python/) and
+[.NET](../ledger-dotnet/).
 
 What it covers:
 
 * payloads with escaped characters, U+2028, an emoji, control characters and numbers that test RFC 8785 formatting
   (`0.1`, `1e21`, `1e-7`, `-0`, `333333333.33333329`);
-* a redacted payload (entry 4, `payloadJson` is `null`);
+* a redacted payload (entry 4, `payloadJson` is `null`), erased with version 0.1, which wrote no redaction record:
+  0.2 verifiers accept it only when told to accept unrecorded redactions;
 * a key rotation: entries 1 to 4 are signed with `k1`, entries 5 and 6 with `k2`;
 * a checkpoint of the head (sequence 6) signed with `k2`.
 

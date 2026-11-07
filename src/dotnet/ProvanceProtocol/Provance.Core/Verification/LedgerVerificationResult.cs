@@ -36,7 +36,13 @@ namespace Provance.Core.Verification
         CheckpointMismatch,
 
         /// <summary>The ledger ends before the sequence of the trusted checkpoint: entries were removed from the end.</summary>
-        Truncated
+        Truncated,
+
+        /// <summary>
+        /// A payload is missing and no redaction record authorizes its removal: it was erased directly in the database,
+        /// not through <c>RedactPayloadAsync</c>.
+        /// </summary>
+        UnrecordedRedaction
     }
 
     /// <summary>Options of <see cref="LedgerVerifier.VerifyAsync"/>.</summary>
@@ -56,6 +62,13 @@ namespace Provance.Core.Verification
 
         /// <summary>Throw <see cref="Exceptions.LedgerTamperedException"/> instead of returning a failed result.</summary>
         public bool ThrowOnFailure { get; init; }
+
+        /// <summary>
+        /// Accept payloads removed without a redaction record. Only for ledgers whose payloads were erased with
+        /// version 0.1, which did not write such records; with it, an erasure done directly in the database is not
+        /// detected. Default <c>false</c>.
+        /// </summary>
+        public bool AcceptUnrecordedRedactions { get; init; }
     }
 
     /// <summary>Result of a ledger verification.</summary>
@@ -81,6 +94,12 @@ namespace Provance.Core.Verification
 
         /// <summary>Number of checked entries whose payload was redacted.</summary>
         public long RedactedPayloads { get; init; }
+
+        /// <summary>
+        /// Sequence of the first entry read: 1, or a later sequence when older entries were removed by retention
+        /// (0 when none was read).
+        /// </summary>
+        public long FirstSequence { get; init; }
 
         /// <summary>Sequence of the last valid entry (0 when none).</summary>
         public long LastSequence { get; init; }

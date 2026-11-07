@@ -28,4 +28,7 @@ Query strings, IP addresses and user agents are off by default; exception messag
 The entry is written after the endpoint ran. For operations that must not happen without an audit trace,
 call `ILedgerService.AddEntryAsync` in the endpoint before doing the work.
 
+With several ledgers, call `AddHttpAuditing` on the builder of the ledger that should receive the requests, for
+example `AddProvance("access", ...).UseEntityFrameworkCore(...).AddHttpAuditing()`.
+
 Documentation: https://github.com/h-ibrahim365/ProvanceProtocol

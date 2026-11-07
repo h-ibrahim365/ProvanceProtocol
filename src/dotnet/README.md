@@ -121,6 +121,41 @@ builder.Services.AddProvance(...)
 `LedgerVerifier` can also be used on its own, for example in a command line tool run by an auditor with
 read access to the database and the verification key.
 
+## Several ledgers
+
+One ledger per tenant, or one for audit and one for billing: register each under a name. Each has its own options,
+store, keys, archive and checkpoints, and its own chain.
+
+```csharp
+builder.Services.AddProvance("billing", builder.Configuration.GetSection("Provance:Ledgers:billing"))
+    .UseEntityFrameworkCore(db => db.UseNpgsql(connectionString));        // table provance_ledger_billing
+builder.Services.AddProvance("access", builder.Configuration.GetSection("Provance:Ledgers:access"))
+    .UseEntityFrameworkCore(db => db.UseNpgsql(connectionString))         // table provance_ledger_access
+    .AddHttpAuditing();                                                   // the HTTP middleware writes here
+
+app.MapPost("/invoices", async ([FromKeyedServices("billing")] ILedgerService billing) => { /* ... */ });
+```
+
+The default ledger (`AddProvance(section)`) can coexist with named ones. Give every ledger its own `LedgerId`.
+
+## Archive copy and retention
+
+```csharp
+builder.Services.AddProvance(builder.Configuration.GetSection("Provance"))
+    .UseEntityFrameworkCore(db => db.UseNpgsql(appConnectionString))
+    .UseEntityFrameworkCoreArchive(db => db.UseNpgsql(archiveConnectionString));
+
+var comparison = await ledger.CompareWithArchiveAsync();   // which field changed, and its original value
+```
+
+Every entry is copied to the archive in the background. When verification fails, the comparison shows what the
+entry said before. With `Provance:Retention:KeepFor` set, entries older than that leave the primary store once the
+archive holds them, and the ledger still verifies. See [ARCHIVE.md](../../docs/ARCHIVE.md) and
+[RETENTION.md](../../docs/RETENTION.md).
+
+`LedgerJsonLines` exports a ledger to the JSON Lines format shared by the three libraries, and reads such an export
+back to verify or compare it.
+
 ## More
 
 * [Implementation notes](../../docs/ARCHITECTURE.md): writer, concurrency, store contract

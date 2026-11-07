@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Provance.Core.Options;
 using Provance.Core.Services.Interfaces;
 
@@ -22,15 +21,28 @@ namespace Provance.Core.Checkpoints
         public CheckpointPublisher(
             ILedgerService ledger,
             IEnumerable<ILedgerCheckpointSink> sinks,
-            IOptions<ProvanceOptions> options,
+            ProvanceOptions options,
             TimeProvider time,
             ILogger<CheckpointPublisher> logger)
         {
             _ledger = ledger;
             _sinks = sinks.ToList();
-            _options = options.Value;
+            _options = options;
             _time = time;
             _logger = logger;
+        }
+
+        /// <summary><c>true</c> when at least one sink is registered.</summary>
+        public bool HasSinks => _sinks.Count > 0;
+
+        /// <summary>Publishes a checkpoint to every sink now. Errors propagate.</summary>
+        public async Task PublishAsync(Data.LedgerCheckpoint checkpoint, CancellationToken ct)
+        {
+            foreach (var sink in _sinks)
+            {
+                await sink.PublishAsync(checkpoint, ct).ConfigureAwait(false);
+            }
+            _lastPublishedSequence = Math.Max(_lastPublishedSequence, checkpoint.Sequence);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)

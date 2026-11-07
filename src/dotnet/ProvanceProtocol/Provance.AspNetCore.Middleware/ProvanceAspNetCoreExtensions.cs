@@ -29,6 +29,11 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             ArgumentNullException.ThrowIfNull(builder);
             var options = builder.Services.AddOptions<HttpAuditOptions>();
+            string ledgerName = builder.LedgerName;
+            if (ledgerName.Length > 0)
+            {
+                options.Configure(o => o.LedgerName = ledgerName);
+            }
             if (configure is not null)
             {
                 options.Configure(configure);

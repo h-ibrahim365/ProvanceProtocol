@@ -66,6 +66,24 @@ describe("ledger written by the Java library", () => {
   });
 });
 
+for (const [language, ledgerId, count] of [["python", "cross-language-python", 6], ["dotnet", "cross-language-dotnet", 7]] as const) {
+  describe(`ledger written by the ${language} library`, () => {
+    const dir = `${vectors}ledger-${language}/`;
+    const entries: LedgerEntry[] = readFileSync(`${dir}entries.jsonl`, "utf8").split("\n").filter(Boolean)
+      .map((line) => JSON.parse(line));
+    const checkpoint: Checkpoint = JSON.parse(readFileSync(`${dir}checkpoint.json`, "utf8"));
+    const keys = new HmacKeys({ k1: "provance-test-vector-key-0123456789abcdef",
+      k2: "provance-test-vector-key-2-abcdef0123456789" });
+
+    it("verifies, with key rotation, redaction and checkpoint", () => {
+      const result = verify(entries, ledgerId, keys, checkpoint);
+      expect(result.message).toBe(`${count} entries verified up to sequence ${count}.`);
+      expect(result.valid).toBe(true);
+      expect(result.redacted).toBe(1);
+    });
+  });
+}
+
 describe("demo ledger", () => {
   const keys = new HmacKeys({ k1: "demo-secret-key-0123456789abcdefghij" });
   const write = (n: number) => {

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,7 +24,20 @@ namespace Provance.AspNetCore.Middleware
             _logger = logger;
         }
 
-        public async Task InvokeAsync(HttpContext context, ILedgerService ledger, IHostApplicationLifetime lifetime)
+        public Task InvokeAsync(HttpContext context, IHostApplicationLifetime lifetime)
+        {
+            if (!_options.IsAudited(context))
+            {
+                return _next(context);
+            }
+
+            var ledger = _options.LedgerName.Length == 0
+                ? context.RequestServices.GetRequiredService<ILedgerService>()
+                : context.RequestServices.GetRequiredKeyedService<ILedgerService>(_options.LedgerName);
+            return InvokeAsync(context, ledger, lifetime);
+        }
+
+        internal async Task InvokeAsync(HttpContext context, ILedgerService ledger, IHostApplicationLifetime lifetime)
         {
             if (!_options.IsAudited(context))
             {

@@ -229,6 +229,34 @@ namespace Provance.AspNetCore.Middleware.Tests
             foreach (var service in hosted) await service.StopAsync(CancellationToken.None);
         }
 
+        [Fact]
+        public async Task Requests_go_to_the_named_ledger_whose_builder_configured_auditing()
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddProvance(o => { o.LedgerId = "app"; o.SecretKey = "middleware-test-secret-key-0123456789abcdef"; }).UseInMemoryStore();
+            services.AddProvance("http", o => { o.LedgerId = "http-audit"; o.SecretKey = "middleware-http-secret-key-0123456789abcd"; })
+                .UseInMemoryStore()
+                .AddHttpAuditing();
+            await using var provider = services.BuildServiceProvider();
+            var hosted = provider.GetServices<IHostedService>().ToList();
+            foreach (var service in hosted) await service.StartAsync(CancellationToken.None);
+
+            var options = provider.GetRequiredService<IOptions<HttpAuditOptions>>();
+            Assert.Equal("http", options.Value.LedgerName);
+            var middleware = new ProvanceAuditMiddleware(_ => Task.CompletedTask, options, NullLogger<ProvanceAuditMiddleware>.Instance);
+            var context = Request("/api/a");
+            context.RequestServices = provider;
+
+            await middleware.InvokeAsync(context, new FakeLifetime());
+
+            var http = provider.GetRequiredKeyedService<ILedgerService>("http");
+            Assert.Equal("http-audit", (await http.GetHeadAsync())!.LedgerId);
+            Assert.Null(await provider.GetRequiredService<ILedgerService>().GetHeadAsync());
+
+            for (int i = hosted.Count - 1; i >= 0; i--) await hosted[i].StopAsync(CancellationToken.None);
+        }
+
         private sealed class RecordingLedger : ILedgerService
         {
             public List<(string EventType, HttpRequestAuditPayload Payload)> Entries { get; } = [];

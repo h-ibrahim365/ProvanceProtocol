@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using Microsoft.Extensions.Options;
 using Provance.Core.Exceptions;
 using Provance.Core.Options;
 
@@ -14,9 +13,8 @@ namespace Provance.Core.Services.Internal
         private readonly QueueFullBehavior _fullBehavior;
         private bool _completed;
 
-        public EntryQueue(IOptions<ProvanceOptions> options)
+        public EntryQueue(ProvanceOptions o)
         {
-            var o = options.Value;
             _fullBehavior = o.QueueFullBehavior;
             _channel = Channel.CreateBounded<PendingEntry>(new BoundedChannelOptions(o.QueueCapacity)
             {

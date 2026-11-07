@@ -67,6 +67,7 @@ class LedgerWriter:
         self._clock = clock
         self._genesis = options.effective_genesis_hash()
         self._accepting = True
+        self._accept_lock = threading.Lock()  # an entry is queued only while accepting, never after the writer stopped
         self._aborted = False
         self._head: tuple[int, str] | None = None  # writer thread only
         self.thread = threading.Thread(target=self._run, name=f"provance-writer-{options.ledger_id}", daemon=True)
@@ -74,28 +75,36 @@ class LedgerWriter:
     def start(self) -> None:
         self.thread.start()
 
-    def enqueue(self, entry: PendingEntry) -> None:
-        if not self._accepting:
-            raise _stopped()
-        if self._options.queue_full_behavior is QueueFullBehavior.FAIL_FAST:
+    def try_enqueue(self, entry: PendingEntry) -> bool:
+        """Queues the entry without blocking. Returns ``False`` when the queue is full and the behavior is ``WAIT``.
+
+        :raises LedgerOverloadedError: the queue is full and the behavior is ``FAIL_FAST``
+        :raises LedgerUnavailableError: the writer is stopping
+        """
+        with self._accept_lock:
+            if not self._accepting:
+                raise _stopped()
             try:
                 self._queue.put_nowait(entry)
+                return True
             except queue.Full:
-                raise (LedgerOverloadedError("PROVANCE queue is full.") if self._accepting else _stopped()) from None
-            return
-        while True:
-            try:
-                self._queue.put(entry, timeout=_POLL_SECONDS)
-                return
-            except queue.Full:
-                if not self._accepting:
-                    raise _stopped() from None
+                if self._options.queue_full_behavior is QueueFullBehavior.FAIL_FAST:
+                    raise LedgerOverloadedError("PROVANCE queue is full.") from None
+                return False
+
+    def enqueue(self, entry: PendingEntry) -> None:
+        """Queues the entry, waiting for room when the behavior is ``WAIT``. Blocks the calling thread: async code uses
+        :meth:`try_enqueue`."""
+        while not self.try_enqueue(entry):
+            time.sleep(_POLL_SECONDS / 10)
 
     def stop_accepting(self) -> None:
-        self._accepting = False
+        with self._accept_lock:
+            self._accepting = False
 
     def abort(self) -> None:
-        self._accepting = False
+        with self._accept_lock:
+            self._accepting = False
         self._aborted = True
 
     def fail_queued(self) -> None:
@@ -133,7 +142,8 @@ class LedgerWriter:
                     for item in batch:
                         item.fail(LedgerUnavailableError(f"Unexpected PROVANCE writer error: {e}"))
         finally:
-            self._accepting = False
+            with self._accept_lock:
+                self._accepting = False
             self.fail_queued()
             log.info("PROVANCE writer stopped for ledger %s.", self._options.ledger_id)
 

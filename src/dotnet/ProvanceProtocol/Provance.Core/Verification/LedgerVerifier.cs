@@ -3,6 +3,7 @@ using Provance.Core.Cryptography;
 using Provance.Core.Data;
 using Provance.Core.Exceptions;
 using Provance.Core.Options;
+using Provance.Core.Retention;
 using Provance.Core.Services.Interfaces;
 using Provance.Core.Signing;
 
@@ -68,8 +69,26 @@ namespace Provance.Core.Verification
             string? lastHash = null;
             bool checkpointSeen = false;
 
+            // Retention: the oldest entries may have been removed. The first remaining entry cannot be linked to
+            // its predecessor, so it must be vouched for by a retention record later in the chain.
+            long firstSequence = 0;
+            string? firstHash = null;
+            bool startNeedsRecord = false;
+            bool startVouched = false;
+
+            // Erased payloads must each be authorized by a redaction record (written after the entry).
+            var erased = new Dictionary<long, Guid>();
+            var authorized = new HashSet<(long, Guid)>();
+
             await foreach (var entry in _store.ReadAsync(expectedSequence, ct).ConfigureAwait(false))
             {
+                if (verified == 0 && !fromCheckpoint && entry.Sequence > expectedSequence)
+                {
+                    expectedSequence = entry.Sequence;
+                    expectedPrevious = null;
+                    startNeedsRecord = true;
+                }
+
                 if (entry.Sequence != expectedSequence)
                 {
                     string what = entry.Sequence > expectedSequence ? "is missing" : "appears more than once or out of order";
@@ -98,6 +117,10 @@ namespace Provance.Core.Verification
                 if (entry.PayloadJson is null)
                 {
                     redacted++;
+                    if (!options.AcceptUnrecordedRedactions && !authorized.Contains((entry.Sequence, entry.Id)))
+                    {
+                        erased[entry.Sequence] = entry.Id;
+                    }
                 }
                 else if (!string.Equals(LedgerHashing.Sha256Hex(entry.PayloadJson), entry.PayloadHash, StringComparison.Ordinal))
                 {
@@ -130,6 +153,31 @@ namespace Provance.Core.Verification
                         : Fail(VerificationFailure.InvalidSignature, "Signature is not valid.", entry, verified, redacted, lastSequence, lastHash);
                 }
 
+                if (verified == 0)
+                {
+                    firstSequence = entry.Sequence;
+                    firstHash = entry.Hash;
+                }
+
+                if (string.Equals(entry.EventType, LedgerRedactionRecord.EventType, StringComparison.Ordinal)
+                    && LedgerRedactionRecord.TryParse(entry.PayloadJson, out long erasedSequence, out Guid erasedId))
+                {
+                    authorized.Add((erasedSequence, erasedId));
+                    if (erased.TryGetValue(erasedSequence, out Guid pending) && pending == erasedId)
+                    {
+                        erased.Remove(erasedSequence);
+                    }
+                }
+
+                if (startNeedsRecord && !startVouched
+                    && string.Equals(entry.EventType, LedgerRetentionRecord.EventType, StringComparison.Ordinal)
+                    && LedgerRetentionRecord.TryParse(entry.PayloadJson, out long keptFrom, out string keptHash)
+                    && keptFrom == firstSequence
+                    && string.Equals(keptHash, firstHash, StringComparison.Ordinal))
+                {
+                    startVouched = true;
+                }
+
                 if (checkpoint is not null && entry.Sequence == checkpoint.Sequence)
                 {
                     if (!string.Equals(entry.Hash, checkpoint.Hash, StringComparison.Ordinal))
@@ -148,16 +196,55 @@ namespace Provance.Core.Verification
                 expectedSequence++;
             }
 
+            if (startNeedsRecord && !startVouched)
+            {
+                return Fail(VerificationFailure.SequenceGap,
+                    $"Entries 1 to {firstSequence - 1} are missing, and no retention record in the ledger accounts for their removal.",
+                    null, verified, redacted, lastSequence, lastHash, 1, firstSequence);
+            }
+
+            if (erased.Count > 0)
+            {
+                var (sequence, id) = erased.MinBy(e => e.Key);
+                return new LedgerVerificationResult
+                {
+                    IsValid = false,
+                    Failure = VerificationFailure.UnrecordedRedaction,
+                    Message = $"Entry {sequence} ({id}): the payload was removed without a redaction record, so it was erased directly in the database, not through RedactPayloadAsync."
+                        + (erased.Count > 1 ? $" {erased.Count - 1} other entries are in the same case." : ""),
+                    FailedAtSequence = sequence,
+                    FailedEntryId = id,
+                    EntriesVerified = verified,
+                    RedactedPayloads = redacted,
+                    LastSequence = lastSequence,
+                    LastHash = lastHash,
+                    FirstSequence = firstSequence
+                };
+            }
+
+            if (checkpoint is not null && !checkpointSeen && verified > 0 && checkpoint.Sequence < firstSequence)
+            {
+                return Fail(VerificationFailure.CheckpointMismatch,
+                    $"The trusted checkpoint references sequence {checkpoint.Sequence}, which was removed by retention (the ledger now starts at {firstSequence}). Use a newer checkpoint.",
+                    null, verified, redacted, lastSequence, lastHash, checkpoint.Sequence, firstSequence);
+            }
+
             if (checkpoint is not null && !checkpointSeen)
             {
                 return Fail(VerificationFailure.Truncated,
                     $"The ledger ends at sequence {lastSequence} but the trusted checkpoint references sequence {checkpoint.Sequence}.",
-                    null, verified, redacted, lastSequence, lastHash, lastSequence + 1);
+                    null, verified, redacted, lastSequence, lastHash, lastSequence + 1, firstSequence);
             }
 
             string message = verified == 0
                 ? "Ledger is empty."
-                : $"{verified} entries verified up to sequence {lastSequence}.";
+                : firstSequence > 1
+                    ? $"{verified} entries verified, from sequence {firstSequence} to {lastSequence}."
+                    : $"{verified} entries verified up to sequence {lastSequence}.";
+            if (startNeedsRecord)
+            {
+                message += $" Entries before {firstSequence} were removed by retention.";
+            }
             if (checkpoint is null && verified > 0)
             {
                 message += " Without a trusted checkpoint, removal of the last entries cannot be detected.";
@@ -171,7 +258,8 @@ namespace Provance.Core.Verification
                 EntriesVerified = verified,
                 RedactedPayloads = redacted,
                 LastSequence = lastSequence,
-                LastHash = lastHash
+                LastHash = lastHash,
+                FirstSequence = firstSequence
             };
         }
 
@@ -209,7 +297,7 @@ namespace Provance.Core.Verification
 
         private static LedgerVerificationResult Fail(
             VerificationFailure failure, string message, LedgerEntry? entry,
-            long verified, long redacted, long lastSequence, string? lastHash, long? failedAtSequence = null)
+            long verified, long redacted, long lastSequence, string? lastHash, long? failedAtSequence = null, long firstSequence = 0)
             => new()
             {
                 IsValid = false,
@@ -220,7 +308,8 @@ namespace Provance.Core.Verification
                 EntriesVerified = verified,
                 RedactedPayloads = redacted,
                 LastSequence = lastSequence,
-                LastHash = lastHash
+                LastHash = lastHash,
+                FirstSequence = firstSequence
             };
     }
 }
