@@ -61,13 +61,22 @@ export function genesisHash(ledgerId: string): string {
 
 type Envelope = Omit<LedgerEntry, "payloadJson" | "hash" | "signature">;
 
+/**
+ * Times appear in canonical bodies as UTC with milliseconds and a Z (2026-11-07T09:00:06.789Z). Files written by
+ * .NET 0.1 use a +00:00 offset in checkpoints, so any ISO 8601 time is normalized first.
+ */
+export function canonicalTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
 export function canonicalEnvelope(entry: Envelope): string {
   return canonicalize({
     v: entry.v,
     ledgerId: entry.ledgerId,
     sequence: entry.sequence,
     id: entry.id,
-    timestamp: entry.timestamp,
+    timestamp: canonicalTime(entry.timestamp),
     eventType: entry.eventType,
     payloadHash: entry.payloadHash,
     previousHash: entry.previousHash,
@@ -86,7 +95,7 @@ export function canonicalCheckpoint(c: Omit<Checkpoint, "signature">): string {
     ledgerId: c.ledgerId,
     sequence: c.sequence,
     hash: c.hash,
-    createdAt: c.createdAt,
+    createdAt: canonicalTime(c.createdAt),
     keyId: c.keyId,
   });
 }

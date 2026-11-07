@@ -21,19 +21,30 @@ namespace Provance.Storage.EntityFrameworkCore
     /// providers with transactions.</para>
     /// </remarks>
     /// <typeparam name="TContext">A context whose model contains the ledger table (see <c>AddProvanceLedger</c>).</typeparam>
-    public sealed class EntityFrameworkLedgerStore<TContext> : ILedgerStore
+    public sealed class EntityFrameworkLedgerStore<TContext> : IPrunableLedgerStore
         where TContext : DbContext
     {
         private readonly IServiceScopeFactory _scopes;
         private readonly EntityFrameworkStoreOptions _options;
+        private readonly Func<TContext>? _createContext;
         private readonly SemaphoreSlim _initLock = new(1, 1);
         private volatile bool _initialized;
 
         /// <summary>Creates the store (resolved by dependency injection).</summary>
         public EntityFrameworkLedgerStore(IServiceScopeFactory scopes, IOptions<EntityFrameworkStoreOptions> options)
+            : this(scopes, options.Value, null)
+        {
+        }
+
+        /// <summary>
+        /// Creates a store with its own options and, optionally, its own way to create contexts. Used for named ledgers
+        /// and archives, which cannot share the context registered with <c>AddDbContext</c>.
+        /// </summary>
+        internal EntityFrameworkLedgerStore(IServiceScopeFactory scopes, EntityFrameworkStoreOptions options, Func<TContext>? createContext)
         {
             _scopes = scopes;
-            _options = options.Value;
+            _options = options;
+            _createContext = createContext;
         }
 
         /// <inheritdoc />
@@ -130,6 +141,38 @@ namespace Provance.Storage.EntityFrameworkCore
             return true;
         }
 
+        /// <inheritdoc />
+        public async Task<long> DeleteBeforeAsync(long sequence, CancellationToken cancellationToken = default)
+        {
+            await using var lease = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            if (lease.Context.Database.IsRelational())
+            {
+                return await lease.Entries
+                    .Where(r => r.Sequence < sequence)
+                    .ExecuteDeleteAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            // Providers without bulk delete: one page at a time.
+            long deleted = 0;
+            while (true)
+            {
+                var page = await lease.Entries
+                    .Where(r => r.Sequence < sequence)
+                    .OrderBy(r => r.Sequence)
+                    .Take(_options.ReadBatchSize)
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (page.Count == 0)
+                {
+                    return deleted;
+                }
+                lease.Entries.RemoveRange(page);
+                await lease.Context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                deleted += page.Count;
+            }
+        }
+
         private async Task<bool> ConflictExistsAsync(IReadOnlyList<LedgerEntry> entries, CancellationToken ct)
         {
             try
@@ -168,7 +211,7 @@ namespace Provance.Storage.EntityFrameworkCore
             {
                 await InitializeAsync(ct).ConfigureAwait(false);
             }
-            return ContextLease.Create(_scopes);
+            return ContextLease.Create(_scopes, _createContext);
         }
 
         private async Task InitializeAsync(CancellationToken ct)
@@ -183,7 +226,7 @@ namespace Provance.Storage.EntityFrameworkCore
 
                 if (_options.EnsureSchema)
                 {
-                    await using var lease = ContextLease.Create(_scopes);
+                    await using var lease = ContextLease.Create(_scopes, _createContext);
                     await EnsureSchemaAsync(lease.Context, ct).ConfigureAwait(false);
                 }
                 _initialized = true;
@@ -269,9 +312,13 @@ namespace Provance.Storage.EntityFrameworkCore
 
             public DbSet<LedgerEntryRecord> Entries => Context.Set<LedgerEntryRecord>();
 
-            public static ContextLease Create(IServiceScopeFactory scopes)
+            public static ContextLease Create(IServiceScopeFactory scopes, Func<TContext>? createContext)
             {
                 var scope = scopes.CreateAsyncScope();
+                if (createContext is not null)
+                {
+                    return new ContextLease(scope, createContext(), ownsContext: true);
+                }
                 var factory = scope.ServiceProvider.GetService<IDbContextFactory<TContext>>();
                 return factory is not null
                     ? new ContextLease(scope, factory.CreateDbContext(), ownsContext: true)

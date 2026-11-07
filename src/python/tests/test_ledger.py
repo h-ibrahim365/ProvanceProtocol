@@ -137,6 +137,25 @@ def test_redaction_and_key_rotation():
         assert without_old_key.failure is VerificationFailure.UNKNOWN_KEY
 
 
+def test_a_truncated_checkpoint_file_is_replaced_and_skipped_when_reading(tmp_path):
+    from provance import read_latest_checkpoint
+
+    with open_ledger() as ledger:
+        ledger.add_entry("EVENT", {"n": 1})
+        first = ledger.create_checkpoint()
+        ledger.add_entry("EVENT", {"n": 2})
+        second = ledger.create_checkpoint()
+    sink = FileCheckpointSink(tmp_path)
+    sink.publish(first)
+    folder = tmp_path / LEDGER_ID
+    (folder / "0000000000000002.json").write_text(second.to_json()[:20], encoding="utf-8")  # the process died while writing
+
+    assert read_latest_checkpoint(tmp_path, LEDGER_ID) == first
+    sink.publish(second)
+    assert read_latest_checkpoint(tmp_path, LEDGER_ID) == second
+    assert not [f for f in folder.iterdir() if f.name.startswith(".")]
+
+
 def test_checkpoint_round_trip_and_file_sink(tmp_path):
     with open_ledger(checkpoint_directory=tmp_path, checkpoint_interval=timedelta(milliseconds=20)) as ledger:
         assert ledger.create_checkpoint() is None  # empty ledger
@@ -312,6 +331,66 @@ def test_async_api():
     with open_ledger() as ledger:
         assert asyncio.run(run(ledger)) == set(range(1, 51))
         assert_chain(ledger, 50)
+
+
+def test_async_api_never_blocks_the_event_loop_on_a_full_queue():
+    gate = threading.Event()
+    store = FaultyStore(gate=gate)
+
+    async def run(ledger):
+        first = asyncio.ensure_future(ledger.add_entry_async("EVENT", {"n": 1}))
+        while store.append_calls < 1:  # the writer holds entry 1 and waits on the store
+            await asyncio.sleep(0.005)
+        second = asyncio.ensure_future(ledger.add_entry_async("EVENT", {"n": 2}))  # fills the queue (capacity 1)
+        while not ledger._writer._queue.full():
+            await asyncio.sleep(0.001)
+        ticks = 0
+
+        async def ticker():
+            nonlocal ticks
+            while True:
+                ticks += 1
+                await asyncio.sleep(0.01)
+
+        clock = asyncio.ensure_future(ticker())
+        with pytest.raises(asyncio.TimeoutError):  # the timeout covers the wait for room in the queue
+            await asyncio.wait_for(ledger.add_entry_async("EVENT", {"n": 3}), 0.3)
+        assert ticks >= 10  # other coroutines kept running meanwhile
+        clock.cancel()
+        gate.set()
+        return (await first).sequence, (await second).sequence
+
+    with open_ledger(store, queue_capacity=1) as ledger:
+        assert asyncio.run(run(ledger)) == (1, 2)
+
+
+def test_entries_submitted_while_closing_are_written_or_failed_never_left_waiting():
+    for _ in range(20):
+        ledger = open_ledger(InMemoryLedgerStore())
+        futures, errors = [], []
+        stop = threading.Event()
+
+        def produce():
+            while not stop.is_set():
+                try:
+                    futures.append(ledger.submit("EVENT", {"n": 1}))
+                except LedgerUnavailableError:
+                    errors.append(1)
+                    return
+
+        threads = [threading.Thread(target=produce) for _ in range(4)]
+        for t in threads:
+            t.start()
+        time.sleep(0.01)
+        ledger.close()
+        stop.set()
+        for t in threads:
+            t.join(5)
+        for future in futures:
+            try:
+                future.result(timeout=5)  # a TimeoutError here is the bug: an entry accepted after the writer stopped
+            except LedgerUnavailableError:
+                pass
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs fork")

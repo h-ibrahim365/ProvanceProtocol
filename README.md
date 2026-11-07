@@ -99,6 +99,7 @@ visible, and it tells you from which entry the log can no longer be trusted.
 | A stored field of an entry is modified (payload, event type, time, actor, ...) | Yes |
 | An entry is deleted, inserted or moved in the middle of the ledger | Yes |
 | Someone recomputes the hashes after editing, without the signing key | Yes (signature) |
+| A payload is set to null in the database, to look like a GDPR erasure | Yes, from 0.2 (signed redaction records) |
 | Entries are removed from the end of the ledger | Only with a trusted checkpoint |
 | Someone with the signing key and write access rewrites the whole ledger | Only with a trusted checkpoint |
 | The whole database is deleted | No. Use backups. |
@@ -157,6 +158,7 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 ## Documentation
 
 * [Ledger format specification](docs/SPEC.md) and [test vectors](docs/test-vectors/) (with an independent Python checker)
+* [Archive copy and comparison](docs/ARCHIVE.md), [retention](docs/RETENTION.md) (.NET 0.2)
 * [.NET guide](src/dotnet/README.md) and [implementation notes](docs/ARCHITECTURE.md)
 * [Java guide](src/java/README.md)
 * [Python guide](src/python/README.md)
@@ -169,25 +171,23 @@ A ledger is append only, which conflicts with the right to erasure. PROVANCE hel
 Version 0.1.0. The ledger format is versioned (format 1) and covered by test vectors; the .NET, Java and
 Python APIs may still change before 1.0.
 
-## Roadmap for 0.2
+## Roadmap
 
-Planned, in no fixed order. Feedback on what matters most to you is welcome in the issues.
+**0.2**, done in .NET, to be ported to Java and Python before the release (the three ship together):
 
-* **Several ledgers in one application**, for example one per tenant, or one for audit and one for billing
-  (keyed services in .NET, named beans in Spring).
-* **Asynchronous mirror to a second store**, for example an archive database or a database owned by another
-  team, where the application account can only insert. Each entry verifies on its own, so the copy can be
-  checked independently.
-* **Field-level diff between the two copies.** Verification says which entry was changed; it cannot say what
-  the original value was, because the ledger only keeps its hash. With a mirror, the copy that still verifies
-  is the original, and a diff shows the changed fields with their original and current values
-  (`provance diff` in the command line tool).
-* **ECDSA signer**, so that an auditor can verify a ledger with the public key only.
-* **Querying** entries by actor, event type or period, with the matching indexes.
-* **Health checks and metrics** (OpenTelemetry).
-* **MongoDB in the .NET test suite.**
-* **Cross-language tests in every suite**: the Python suite already verifies a ledger written by Java
-  ([fixture](docs/test-vectors/ledger-java/)); the .NET and Java suites will read it too.
+* **Several ledgers in one application**, for example one per tenant, or one for audit and one for billing.
+* **Archive copy**: every entry is copied, in the background, to a second store where the application can only
+  insert, for example an archive database owned by another team ([ARCHIVE.md](docs/ARCHIVE.md)).
+* **Field-level comparison** between the two copies: verification says which entry was changed; the comparison
+  says which field, with its original and current value (`provance diff` in the Python command line tool).
+* **Retention**: old entries leave the primary store once the archive holds them, and the ledger still verifies
+  ([RETENTION.md](docs/RETENTION.md)).
+* **Cross-language tests in every suite**: ledgers written by [Java](docs/test-vectors/ledger-java/),
+  [Python](docs/test-vectors/ledger-python/) and [.NET](docs/test-vectors/ledger-dotnet/) verify everywhere.
+
+**Later**: ECDSA signatures (auditors verify with the public key only), checkpoints sent to immutable storage and
+timestamping services, querying by actor, event type or period, health checks and metrics (OpenTelemetry).
+Feedback on what matters most to you is welcome in the issues.
 
 ## License
 

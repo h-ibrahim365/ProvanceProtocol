@@ -73,6 +73,30 @@ namespace Provance.Core.Tests
         }
 
         [Fact]
+        public async Task A_truncated_file_left_by_a_crash_is_replaced_and_skipped_when_reading()
+        {
+            await using var harness = await LedgerHarness.StartAsync();
+            var sink = new FileCheckpointSink(_directory);
+            await harness.Ledger.AddEntryAsync("EVENT", new AuditedPayload());
+            var first = (await harness.Ledger.CreateCheckpointAsync())!;
+            await sink.PublishAsync(first);
+            await harness.Ledger.AddEntryAsync("EVENT", new AuditedPayload());
+            var second = (await harness.Ledger.CreateCheckpointAsync())!;
+
+            string folder = Path.Combine(_directory, LedgerHarness.LedgerId);
+            string secondFile = Path.Combine(folder, "0000000000000002.json");
+            await File.WriteAllTextAsync(secondFile, second.ToJson()[..20]); // the process died while writing
+
+            Assert.Equal(first, await FileCheckpointSink.ReadLatestAsync(_directory, LedgerHarness.LedgerId));
+
+            await sink.PublishAsync(second);
+
+            Assert.Equal(second, await FileCheckpointSink.ReadLatestAsync(_directory, LedgerHarness.LedgerId));
+            Assert.Empty(Directory.GetFiles(folder, "*.tmp"));
+            Assert.Empty(Directory.GetFiles(folder, ".*"));
+        }
+
+        [Fact]
         public async Task Publisher_publishes_only_when_the_head_moves()
         {
             var sink = new RecordingSink();

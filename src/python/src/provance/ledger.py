@@ -26,6 +26,7 @@ from .verifier import LedgerVerifier, VerificationResult
 log = logging.getLogger("provance")
 
 MAX_EVENT_TYPE_LENGTH = 200
+_ASYNC_QUEUE_POLL_SECONDS = 0.01
 
 
 class ProvanceLedger:
@@ -110,8 +111,15 @@ class ProvanceLedger:
         return self.submit(event_type, payload).result(timeout=timeout)
 
     async def add_entry_async(self, event_type: str, payload: Any) -> LedgerEntry:
-        """Async version of :meth:`add_entry`, for asyncio applications (FastAPI, Starlette, ...)."""
-        return await asyncio.wrap_future(self.submit(event_type, payload))
+        """Async version of :meth:`add_entry`, for asyncio applications (FastAPI, Starlette, ...).
+
+        Never blocks the event loop: when the queue is full (behavior ``WAIT``), it awaits until there is room, so a
+        timeout around this call (such as the middleware's ``audit_timeout``) also bounds the wait for the queue.
+        """
+        pending = self._prepare(event_type, payload)
+        while not self._writer.try_enqueue(pending):
+            await asyncio.sleep(_ASYNC_QUEUE_POLL_SECONDS)
+        return await asyncio.wrap_future(pending.future)
 
     def get_head(self) -> LedgerEntry | None:
         return self.store.get_head()

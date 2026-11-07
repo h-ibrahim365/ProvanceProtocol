@@ -9,7 +9,7 @@ namespace Provance.Core.Services
     /// Thread safe in-memory store for tests and demos. Everything is lost when the process stops.
     /// Register it explicitly with <c>UseInMemoryStore()</c>; it is never used as a silent fallback.
     /// </summary>
-    public sealed class InMemoryLedgerStore : ILedgerStore
+    public sealed class InMemoryLedgerStore : IPrunableLedgerStore
     {
         private readonly object _gate = new();
         private readonly List<LedgerEntry> _entries = []; // ordered by sequence
@@ -101,6 +101,21 @@ namespace Provance.Core.Services
                 }
                 _entries[i] = _entries[i] with { PayloadJson = null };
                 return Task.FromResult(true);
+            }
+        }
+
+        /// <inheritdoc />
+        public Task<long> DeleteBeforeAsync(long sequence, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                int removed = _entries.RemoveAll(e => e.Sequence < sequence);
+                if (removed > 0)
+                {
+                    Reindex();
+                }
+                return Task.FromResult((long)removed);
             }
         }
 

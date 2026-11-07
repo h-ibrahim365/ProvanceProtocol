@@ -81,9 +81,37 @@ namespace Provance.Core.Options
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
+        /// <summary>
+        /// How often the archive copy checks for entries to copy when no write wakes it up. Default 5 seconds.
+        /// Only used when an archive is configured (<c>UseArchive(...)</c>).
+        /// </summary>
+        public TimeSpan ArchiveInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+        /// <summary>Removal of old entries from the primary store. Off unless <see cref="LedgerRetentionOptions.KeepFor"/> is set.</summary>
+        public LedgerRetentionOptions Retention { get; set; } = new();
+
         /// <summary>The genesis hash actually used: <see cref="GenesisHash"/> if set, otherwise derived from <see cref="LedgerId"/>.</summary>
         public string EffectiveGenesisHash
             => string.IsNullOrEmpty(GenesisHash) ? LedgerHashing.DeriveGenesisHash(LedgerId) : GenesisHash;
+    }
+
+    /// <summary>Automatic retention of the primary store. See docs/RETENTION.md.</summary>
+    public sealed class LedgerRetentionOptions
+    {
+        /// <summary>
+        /// How long entries stay in the primary store, for example 7 days. Older entries are removed once the archive
+        /// holds an identical copy. <c>null</c> (default): nothing is removed automatically.
+        /// </summary>
+        public TimeSpan? KeepFor { get; set; }
+
+        /// <summary>Interval between two automatic runs. Default 24 hours.</summary>
+        public TimeSpan Interval { get; set; } = TimeSpan.FromHours(24);
+
+        /// <summary>
+        /// Remove entries only when an archive is configured and holds the same entries. Default <c>true</c>.
+        /// Set it to <c>false</c> only if you keep a copy some other way (for example a daily export).
+        /// </summary>
+        public bool RequireArchive { get; set; } = true;
     }
 
     /// <summary>Validates <see cref="ProvanceOptions"/> at startup.</summary>
@@ -124,6 +152,25 @@ namespace Provance.Core.Options
 
             if (options.CheckpointInterval <= TimeSpan.Zero)
                 errors.Add("Provance:CheckpointInterval must be positive.");
+
+            if (options.ArchiveInterval <= TimeSpan.Zero)
+                errors.Add("Provance:ArchiveInterval must be positive.");
+
+            if (options.Retention is null)
+                errors.Add("Provance:Retention cannot be null.");
+            else
+            {
+                if (options.Retention.KeepFor is TimeSpan keep && keep <= TimeSpan.Zero)
+                    errors.Add("Provance:Retention:KeepFor must be positive.");
+                if (options.Retention.Interval <= TimeSpan.Zero)
+                    errors.Add("Provance:Retention:Interval must be positive.");
+            }
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                for (int i = 0; i < errors.Count; i++)
+                    errors[i] = $"Ledger '{name}': {errors[i]}";
+            }
 
             return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
         }
