@@ -48,7 +48,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-        <spring-boot.version>4.1.1</spring-boot.version>
+        <spring-boot.version>4.1.2</spring-boot.version>
         <jakarta-servlet.version>6.1.0</jakarta-servlet.version>
 
         <junit.version>6.0.0</junit.version>
