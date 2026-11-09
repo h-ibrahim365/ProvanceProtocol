@@ -57,7 +57,7 @@
         <sqlite-jdbc.version>3.49.1.0</sqlite-jdbc.version>
         <postgresql.version>42.7.7</postgresql.version>
         <mssql-jdbc.version>12.8.1.jre11</mssql-jdbc.version>
-        <mysql-connector.version>9.1.0</mysql-connector.version>
+        <mysql-connector.version>26.10.0</mysql-connector.version>
     </properties>
 
     <dependencyManagement>
